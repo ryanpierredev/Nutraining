@@ -1,0 +1,21 @@
+[Unit]
+Description=Nutraining API
+After=network.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@ROOT@/api
+Environment=NODE_ENV=production
+Environment=PORT=3101
+ExecStart=@NODE@ --env-file=.env server.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

@@ -8,7 +8,28 @@ Código, migrações, scripts e documentação devem ser alterados no Git e revi
 - Node.js 24 e npm; PostgreSQL existente com backup antes da atualização.
 - `api/.env` com PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD e PORT existentes.
 - Usuário do banco com permissão para aplicar migrações (ALTER TABLE). Não execute testes no banco de produção.
-- Unidade systemd existente executando `node --env-file=.env server.mjs` dentro de `api/`. O script não adivinha o nome nem modifica a configuração atual do serviço ou do proxy HTTPS.
+- Nginx existente encaminhando para `127.0.0.1:3101`. O serviço abaixo fixa essa porta e não modifica Nginx, certificados ou outros aplicativos.
+
+## Instalar o serviço pela primeira vez
+
+Após integrar esta branch à `main`, em `/home/ubuntu/apps/nutraining-git`, como usuário `ubuntu`:
+
+```bash
+git pull --ff-only origin main
+bash scripts/install-ec2-service.sh
+```
+
+Faça backup do banco antes de executar. O instalador exige `api/.env` existente e checkout limpo, instala dependências, aplica migrações e instala a unidade `nutraining-api.service` a partir do template versionado em `deploy/`. Usa o caminho real do checkout e do Node, executa como o usuário atual e habilita a inicialização após reboot. Recusa sobrescrever uma unidade existente ou usar a porta 3101 se estiver ocupada. Não executa como root; solicita sudo apenas para configurar systemd.
+
+A porta 3101 é fixada pelo serviço, independentemente do PORT no `.env`, pois é o destino do Nginx existente. O PostgreSQL continua usando as variáveis PG do `.env`. Nenhuma senha é escrita na unidade. Se a primeira inicialização falhar, consulte os logs abaixo e corrija a causa; use o script de atualização para tentar novamente com a unidade já instalada.
+
+```bash
+sudo systemctl status nutraining-api.service --no-pager
+sudo journalctl -u nutraining-api.service -n 50 --no-pager
+curl --fail http://127.0.0.1:3101/health
+```
+
+Atualizações da configuração da unidade também devem ser feitas no template pelo Git e instaladas explicitamente após revisão. O script de atualização comum reinicia a unidade existente; não reinstala o template.
 
 ## Atualizar o EC2
 
@@ -16,10 +37,10 @@ Após o merge no GitHub, dentro do checkout no servidor:
 
 ```bash
 git pull --ff-only origin main
-API_SERVICE=nome-real-do-servico bash scripts/update-ec2.sh
+bash scripts/update-ec2.sh
 ```
 
-Substitua `nome-real-do-servico` pela unidade systemd da API. O script confirma a branch e o checkout limpo, atualiza pelo Git, instala as dependências com lockfile, aplica migrações pendentes, reinicia a unidade e verifica a API e sua conexão ao PostgreSQL. Precisa da permissão de reinício via sudo. O primeiro `git pull` baixa também a versão atual do próprio script.
+O serviço padrão é `nutraining-api.service`; para outro serviço existente, passe `API_SERVICE=nome.service`. O script confirma a branch e o checkout limpo, atualiza pelo Git, instala as dependências com lockfile, aplica migrações pendentes, reinicia a unidade e verifica a API e sua conexão ao PostgreSQL. Precisa da permissão de reinício via sudo. O primeiro `git pull` baixa também a versão atual do próprio script.
 
 As migrações têm transação e bloqueio contra execução simultânea. A 001 é ignorada no banco já preparado; a 002 acrescenta `admin` sem remover usuários. Não remova tabelas nem reaplique SQL manualmente. Se uma migração falhar, o script para antes do reinício. Investigue a falha antes de tentar novamente. Não há reversão automática de schema.
 
