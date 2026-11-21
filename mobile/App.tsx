@@ -15,7 +15,9 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
 
-type Role = 'student' | 'trainer' | 'nutritionist';
+import AdminPanel from './AdminPanel';
+
+type Role = 'student' | 'trainer' | 'nutritionist' | 'admin';
 
 type User = {
   id: string;
@@ -28,6 +30,7 @@ type User = {
 const roles: Role[] = ['student', 'trainer', 'nutritionist'];
 
 const labels: Record<Role, string> = {
+  admin: 'Administrador',
   student: 'Aluno',
   trainer: 'Personal',
   nutritionist: 'Nutricionista',
@@ -49,7 +52,7 @@ function validUser(value: any): value is User {
     typeof value.id === 'string' &&
     typeof value.name === 'string' &&
     typeof value.email === 'string' &&
-    roles.includes(value.role)
+    [...roles, 'admin'].includes(value.role)
   );
 }
 
@@ -65,6 +68,7 @@ async function request(
     method?: string;
     body?: Record<string, unknown>;
     token?: string;
+    admin?: boolean;
   } = {},
 ): Promise<any> {
   if (!API.startsWith('https://')) {
@@ -75,7 +79,7 @@ async function request(
   const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const response = await fetch(`${API}/v1/auth/${path}`, {
+    const response = await fetch(`${API}/v1/${options.admin ? 'admin' : 'auth'}/${path}`, {
       method: options.method || 'GET',
       signal: controller.signal,
       headers: {
@@ -354,6 +358,8 @@ export default function App() {
                           </>
                         )}
                       </View>
+
+                      {user.role === 'admin' && <AdminPanel token={token} request={request} />}
 
                       {!!error && (
                         <Text accessibilityRole="alert" style={styles.error}>

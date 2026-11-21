@@ -15,6 +15,7 @@ app.disable('x-powered-by');
 
 app.set('trust proxy', 'loopback');
 app.use(express.json({ limit: '16kb' }));
+app.use('/v1/admin', createAuthRouter(pool, { administrative: true }));
 app.use('/v1/auth', createAuthRouter(pool));
 
 app.get('/health', async (_req, res) => {
