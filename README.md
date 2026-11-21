@@ -44,3 +44,5 @@ Nunca versione senhas, tokens, chaves privadas ou arquivos .env locais.
 O administrador pode listar usuários e cadastrar alunos, personal trainers, nutricionistas e outros administradores pelo aplicativo. O cadastro público nunca permite selecionar o perfil administrador.
 
 Consulte [atualização do EC2 pelo GitHub](docs/EC2.md) para migrações, criação do primeiro administrador e comandos de atualização. Todas as alterações de código e banco são versionadas; configurações e segredos locais não vão para o Git.
+
+Para gerar e instalar o APK atualizado a partir do Git, consulte [Android](docs/ANDROID.md).
