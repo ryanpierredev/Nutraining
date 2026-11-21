@@ -20,7 +20,7 @@ bash scripts/setup-node24.sh
 bash scripts/install-ec2-service.sh
 ```
 
-Faça backup do banco antes de executar. O instalador exige `api/.env` existente e checkout limpo, instala dependências, aplica migrações e instala a unidade `nutraining-api.service` a partir do template versionado em `deploy/`. Usa o caminho real do checkout e do Node, executa como o usuário atual e habilita a inicialização após reboot. Recusa sobrescrever uma unidade existente ou usar a porta 3101 se estiver ocupada. Não executa como root; solicita sudo apenas para configurar systemd.
+Faça backup do banco antes de executar. O instalador exige `api/.env` existente e checkout limpo, instala dependências, aplica migrações e instala a unidade `nutraining-api.service` a partir do template versionado em `deploy/`. Usa o caminho real do checkout e do Node, executa como o usuário atual e habilita a inicialização após reboot. Recusa sobrescrever uma unidade existente ou usar a porta 3101 se estiver ocupada. Não executa como root; usa sudo apenas para configurar systemd. Verifica a execução com `sudo -n true`, sem solicitar senha. Em EC2 com `NOPASSWD: ALL`, não é necessário definir senha para o usuário ubuntu.
 
 A porta 3101 é fixada pelo serviço, independentemente do PORT no `.env`, pois é o destino do Nginx existente. O PostgreSQL continua usando as variáveis PG do `.env`. Nenhuma senha é escrita na unidade. Se a primeira inicialização falhar, consulte os logs abaixo e corrija a causa; use o script de atualização para tentar novamente com a unidade já instalada.
 
