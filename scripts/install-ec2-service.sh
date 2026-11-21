@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/node-runtime.sh
 for tool in node npm git ss systemctl sudo sed readlink; do
   command -v "$tool" >/dev/null || { echo "Ferramenta necessária ausente: $tool" >&2; exit 1; }
 done
