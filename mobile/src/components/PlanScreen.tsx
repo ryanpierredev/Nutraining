@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Alert, Platform, Text, View } from 'react-native';
 import { useSession } from '../lib/session';
 import { useResource } from '../lib/resource';
 import { dateLabel, message, today } from '../lib/api';
 import ClientPicker, { type Client } from './ClientPicker';
-import { Button, Card, Copy, Empty, Field, Heading, Loading, Notice, Page, s } from './ui';
+import { Button, Card, Copy, Empty, Field, Heading, Loading, Notice, Page, useUI } from './ui';
 type Kind = 'workout' | 'nutrition';
 type Item = { name: string; sets: string; reps: string; restSeconds: string; time: string; foods: string };
 type Plan = { id: string; userId: string; createdBy: string; title: string; notes: string; authorName: string;
@@ -12,12 +13,15 @@ type Plan = { id: string; userId: string; createdBy: string; title: string; note
 type Result = { plans: Plan[]; logs: { planId: string; itemIndex: number }[] };
 const blankItem = (): Item => ({ name: '', sets: '3', reps: '10 a 12', restSeconds: '60', time: '08:00', foods: '' });
 export default function PlanScreen({ kind }: { kind: Kind }) {
+  const {s,colors}=useUI();
   const { user, call } = useSession();
   const workout = kind === 'workout';
   const professional = user?.role !== 'student';
   const specialty = user?.role === 'admin' || user?.role === (workout ? 'trainer' : 'nutritionist');
   const clients = useResource<{ clients: Client[] }>(professional && specialty ? 'app/clients' : null);
-  const [selected, setSelected] = useState('');
+  const params=useLocalSearchParams<{ userId?: string }>();
+  const [selected, setSelected] = useState(typeof params.userId==='string'?params.userId:'');
+  useFocusEffect(useCallback(()=>{ if(typeof params.userId==='string')setSelected(params.userId); },[params.userId]));
   const target = professional ? (selected || clients.data?.clients[0]?.id) : user?.id;
   const date = today();
   const path = target && (!professional || specialty) ? `app/plans?kind=${kind}&day=${date}&userId=${target}` : null;
@@ -55,7 +59,7 @@ export default function PlanScreen({ kind }: { kind: Kind }) {
     else Alert.alert('Arquivar plano?', 'Ele sairá da lista de planos ativos.', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Arquivar', style: 'destructive', onPress: () => void archive(id) }]);
   }
   const done = (id: string, index: number) => resource.data?.logs.some(log => log.planId === id && log.itemIndex === index);
-  return <Page title={workout ? 'Seus treinos.' : 'Sua alimentação.'} subtitle={professional ? 'Planos para acompanhar seus alunos.' : `Organize sua rotina e registre o dia · ${dateLabel(date)}`}>
+  return <Page title={user?.role==='admin' ? (workout ? 'Atribuir treinos.' : 'Atribuir dietas.') : workout ? 'Seus treinos.' : 'Sua alimentação.'} subtitle={user?.role==='admin' ? 'Selecione um aluno e atribua o plano diretamente.' : professional ? 'Planos para acompanhar seus alunos.' : `Organize sua rotina e registre o dia · ${dateLabel(date)}`}>
     {professional && !specialty ? <Empty title="Cada especialidade no seu espaço" detail={workout ? 'O personal acompanha os planos de treino. Seus alunos e planos alimentares estão na aba Alimentação.' : 'O nutricionista acompanha os planos alimentares. Seus alunos e treinos estão na aba Treinos.'} /> : <>
       {clients.loading && <Loading />}<Notice>{clients.error}</Notice>
       {!!clients.error && <Button title="Tentar carregar alunos" secondary onPress={() => void clients.reload()} />}
@@ -66,7 +70,7 @@ export default function PlanScreen({ kind }: { kind: Kind }) {
         {creating && <Card><Heading>{workout ? 'Novo treino' : 'Novo plano alimentar'}</Heading>
           <Field label="Título" value={title} onChangeText={setTitle} maxLength={100} editable={!busy} placeholder={workout ? 'Ex.: Treino A · membros superiores' : 'Ex.: Rotina da semana'} />
           <Field label="Orientações (opcional)" value={notes} onChangeText={setNotes} maxLength={2000} multiline editable={!busy} />
-          {items.map((item, index) => <View key={index} style={{ gap: 12, borderTopWidth: 1, borderColor: '#dce5d6', paddingTop: 16 }}>
+          {items.map((item, index) => <View key={index} style={{ gap: 12, borderTopWidth: 1, borderColor: colors.line, paddingTop: 16 }}>
             <Heading>{workout ? 'Exercício' : 'Refeição'} {index + 1}</Heading>
             <Field label={workout ? 'Nome do exercício' : 'Nome da refeição'} value={item.name} onChangeText={v => change(index, 'name', v)} maxLength={100} editable={!busy} />
             {workout ? <>
@@ -87,7 +91,7 @@ export default function PlanScreen({ kind }: { kind: Kind }) {
         {resource.data?.plans.map(plan => <Card key={plan.id}>
           <View style={s.chip}><Text style={s.chipText}>{workout ? `${plan.items.length} EXERCÍCIOS` : `${plan.items.length} REFEIÇÕES`}</Text></View>
           <Heading>{plan.title}</Heading><Copy>Por {plan.authorName}</Copy>{!!plan.notes && <Copy>{plan.notes}</Copy>}
-          {plan.items.map((item, index) => <View key={index} style={{ gap: 8, borderTopWidth: 1, borderColor: '#e5ecde', paddingTop: 14 }}>
+          {plan.items.map((item, index) => <View key={index} style={{ gap: 8, borderTopWidth: 1, borderColor: colors.line, paddingTop: 14 }}>
             <Text style={s.label}>{workout ? `${index + 1}. ` : `${item.time} · `}{item.name}</Text>
             <Copy>{workout ? `${item.sets} séries · ${item.reps} · descanso ${item.restSeconds}s` : item.foods}</Copy>
             {!workout && !professional && <Button title={done(plan.id, index) ? '✓ Refeição registrada · desfazer' : 'Registrar refeição de hoje'} secondary={!!done(plan.id, index)} disabled={busy} onPress={() => void toggle(plan, index)} />}

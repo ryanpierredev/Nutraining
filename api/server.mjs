@@ -1,5 +1,7 @@
 
 
+import { createAccountRouter } from './account.mjs';
+import { createManagementRouter } from './management.mjs';
 import { createAppRouter } from './app.mjs';
 import { createAuthRouter } from './auth.mjs';
 import express from 'express';
@@ -16,6 +18,8 @@ app.disable('x-powered-by');
 
 app.set('trust proxy', 'loopback');
 app.use(express.json({ limit: '64kb' }));
+app.use('/v1/account', createAccountRouter(pool));
+app.use('/v1/management', createManagementRouter(pool));
 app.use('/v1/app', createAppRouter(pool));
 app.use('/v1/admin', createAuthRouter(pool, { administrative: true }));
 app.use('/v1/auth', createAuthRouter(pool));

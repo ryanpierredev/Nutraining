@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 export type Role = 'student' | 'trainer' | 'nutritionist' | 'admin';
 export type User = { id: string; name: string; email: string; role: Role; professionalCode: string | null };
 export const labels: Record<Role, string> = { student: 'Aluno', trainer: 'Personal', nutritionist: 'Nutricionista', admin: 'Administrador' };
@@ -39,3 +40,8 @@ export function today() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 export function dateLabel(day: string) { return day.split('-').reverse().join('/'); }
+
+export function deviceLabel() { return Platform.OS === 'web' ? `Navegador · ${navigator.userAgent.slice(0,130)}` : `Nutraining · ${Platform.OS === 'android' ? 'Android' : 'iOS'}`; }
+export function timestamp(value: string | null) { return value ? new Date(value).toLocaleString('pt-BR') : 'Sem registro'; }
+
+export type SessionRow={id:string;deviceLabel:string;createdAt:string;lastSeenAt:string;expiresAt:string;current:boolean};

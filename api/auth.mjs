@@ -45,13 +45,13 @@ function publicUser(row) {
   };
 }
 
-async function hashPassword(password) {
+export async function hashPassword(password) {
   const salt = randomBytes(16).toString('hex');
   const key = await scrypt(password, salt, 64, scryptOptions);
   return `scrypt-v1$${salt}$${key.toString('hex')}`;
 }
 
-async function matchesPassword(password, storedHash) {
+export async function matchesPassword(password, storedHash) {
   if (
     typeof storedHash !== 'string' ||
     !/^scrypt-v1\$[a-f0-9]{32}\$[a-f0-9]{128}$/.test(storedHash)
@@ -64,21 +64,29 @@ async function matchesPassword(password, storedHash) {
   return timingSafeEqual(key, Buffer.from(digest, 'hex'));
 }
 
-async function createSession(database, userId) {
+export async function createSession(database, userId, deviceLabel = 'Dispositivo não identificado', event = 'login') {
   const token = randomBytes(32).toString('base64url');
 
   const result = await database.query(
     `INSERT INTO public.nt_sessions
-       (token_hash, user_id, expires_at)
-     VALUES ($1, $2, NOW() + INTERVAL '7 days')
+       (token_hash, user_id, expires_at, device_label)
+     VALUES ($1, $2, NOW() + INTERVAL '7 days', $3)
      RETURNING expires_at`,
-    [tokenHash(token), userId],
+    [tokenHash(token), userId, deviceLabel],
   );
 
+  await database.query('UPDATE public.nt_users SET last_login_at=NOW() WHERE id=$1', [userId]);
+  await database.query('INSERT INTO public.nt_account_events(user_id,actor_id,event) VALUES ($1,$1,$2)', [userId, event]);
   return {
     token,
     expiresAt: result.rows[0].expires_at,
   };
+}
+
+export function sessionDevice(req) {
+  const label = req.body?.deviceLabel;
+  return (typeof label === 'string' && label.trim() ? label : req.get('user-agent') || 'Dispositivo não identificado')
+    .replace(/[\x00-\x1f\x7f]/g, '').slice(0, 160);
 }
 
 export function createRequireAuth(pool) {
@@ -94,7 +102,7 @@ export function createRequireAuth(pool) {
     const hash = tokenHash(match[1]);
 
     const result = await pool.query(
-      `SELECT u.id, u.name, u.email, u.role, u.professional_code
+      `SELECT u.id, u.name, u.email, u.role, u.professional_code, s.id AS session_id
        FROM public.nt_sessions s
        JOIN public.nt_users u ON u.id = s.user_id
        WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
@@ -108,8 +116,10 @@ export function createRequireAuth(pool) {
     req.auth = {
       user: publicUser(result.rows[0]),
       tokenHash: hash,
+      sessionId: result.rows[0].session_id,
     };
 
+    await pool.query("UPDATE public.nt_sessions SET last_seen_at=NOW() WHERE token_hash=$1 AND last_seen_at < NOW()-INTERVAL '1 minute'", [hash]);
     next();
   };
 }
@@ -189,7 +199,8 @@ export function createAuthRouter(pool, { administrative = false } = {}) {
       );
 
       const user = publicUser(result.rows[0]);
-      const session = administrative ? {} : await createSession(client, user.id);
+      const session = administrative ? {} : await createSession(client, user.id, sessionDevice(req), 'signup');
+      if (administrative) await client.query("INSERT INTO public.nt_account_events(user_id,actor_id,event) VALUES ($1,$2,'account_created')", [user.id, req.auth.user.id]);
 
       await client.query('COMMIT');
       res.status(201).json({ user, ...session });
@@ -218,25 +229,25 @@ export function createAuthRouter(pool, { administrative = false } = {}) {
       return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
     }
 
-    const result = await pool.query(
-      `SELECT id, name, email, role, professional_code, password_hash
-       FROM public.nt_users
-       WHERE lower(email) = $1`,
-      [email],
-    );
-
-    const row = result.rows[0];
-    const matches = await matchesPassword(
-      password,
-      row?.password_hash || dummyHash,
-    );
-
-    if (!row || !matches) {
-      return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
-    }
-
-    const session = await createSession(pool, row.id);
-    res.json({ user: publicUser(row), ...session });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `SELECT id, name, email, role, professional_code, password_hash
+         FROM public.nt_users WHERE lower(email) = $1 FOR UPDATE`, [email]);
+      const row = result.rows[0];
+      const matches = await matchesPassword(password, row?.password_hash || dummyHash);
+      if (!row || !matches) {
+        await client.query('ROLLBACK');
+        return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
+      }
+      const session = await createSession(client, row.id, sessionDevice(req));
+      await client.query('COMMIT');
+      res.json({ user: publicUser(row), ...session });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally { client.release(); }
   });
 
   router.get('/me', requireAuth, (req, res) => {

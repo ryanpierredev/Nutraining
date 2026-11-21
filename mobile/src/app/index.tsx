@@ -3,8 +3,9 @@ import { Redirect } from 'expo-router';
 import { Text, View } from 'react-native';
 import { useSession } from '../lib/session';
 import { labels, message, type Role } from '../lib/api';
-import { Button, Card, Copy, Field, Loading, Notice, Page, s } from '../components/ui';
+import { Button, Card, Copy, Field, Loading, Notice, Page, useUI } from '../components/ui';
 export default function Login() {
+  const {s}=useUI();
   const session = useSession();
   const [signup, setSignup] = useState(false);
   const [name, setName] = useState(''); const [email, setEmail] = useState('');

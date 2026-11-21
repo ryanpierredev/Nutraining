@@ -4,9 +4,10 @@ import { useSession } from '../../lib/session';
 import { useResource } from '../../lib/resource';
 import { dateLabel, message, today } from '../../lib/api';
 import ClientPicker, { type Client } from '../../components/ClientPicker';
-import { Button, Card, Copy, Empty, Field, Heading, Loading, Notice, Page, s } from '../../components/ui';
+import { Button, Card, Copy, Empty, Field, Heading, Loading, Notice, Page, useUI } from '../../components/ui';
 type Checkin = { day: string; weightKg: number; waistCm: number | null; notes: string };
 export default function Progress() {
+  const {s}=useUI();
   const { user, call } = useSession();
   const professional = user?.role !== 'student';
   const clients = useResource<{ clients: Client[] }>(professional ? 'app/clients' : null);

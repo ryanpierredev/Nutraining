@@ -1,3 +1,5 @@
+import { Link } from 'expo-router';
+import { useUI } from './ui';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -11,6 +13,8 @@ const labels: Record<Role, string> = {
 };
 
 export default function AdminPanel({ token, request }: { token: string; request: Request }) {
+  const {colors}=useUI();
+  const styles=makeStyles(colors);
   const [users, setUsers] = useState<User[]>([]);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -69,41 +73,45 @@ export default function AdminPanel({ token, request }: { token: string; request:
     <Text style={styles.title}>Administração de usuários</Text>
     <Text style={styles.label}>Novo usuário</Text>
     <TextInput accessibilityLabel="Nome do novo usuário" placeholder="Nome" value={name}
-      onChangeText={setName} maxLength={120} editable={!busy} style={styles.input} />
+      onChangeText={setName} maxLength={120} editable={!busy} style={styles.input} placeholderTextColor={colors.muted} />
     <TextInput accessibilityLabel="E-mail do novo usuário" placeholder="E-mail" value={email}
       onChangeText={setEmail} maxLength={254} autoCapitalize="none" autoCorrect={false}
-      keyboardType="email-address" editable={!busy} style={styles.input} />
+      keyboardType="email-address" editable={!busy} style={styles.input} placeholderTextColor={colors.muted} />
     <TextInput accessibilityLabel="Senha do novo usuário" placeholder="Senha (12 a 128 caracteres)"
       value={password} onChangeText={setPassword} maxLength={128} secureTextEntry
-      autoCapitalize="none" autoCorrect={false} editable={!busy} style={styles.input} />
+      autoCapitalize="none" autoCorrect={false} editable={!busy} style={styles.input} placeholderTextColor={colors.muted} />
     {(Object.keys(labels) as Role[]).map(item => <Pressable key={item}
       accessibilityRole="radio" accessibilityState={{ checked: role === item }}
       disabled={busy} onPress={() => setRole(item)} style={styles.action}>
-      <Text>{role === item ? '●' : '○'} {labels[item]}</Text>
+      <Text style={{color:colors.ink}}>{role === item ? '●' : '○'} {labels[item]}</Text>
     </Pressable>)}
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => void create()} style={styles.action}>
-      <Text>{busy ? 'Cadastrando...' : 'Cadastrar usuário'}</Text>
+      <Text style={{color:colors.ink}}>{busy ? 'Cadastrando...' : 'Cadastrar usuário'}</Text>
     </Pressable>
     {!!message && <Text accessibilityRole="alert" style={styles.label}>{message}</Text>}
     <Text style={styles.title}>Usuários cadastrados</Text>
     <Pressable accessibilityRole="button" disabled={loading} onPress={() => { setMessage(''); setLoading(true); void load(); }} style={styles.action}>
-      <Text>Atualizar lista</Text>
+      <Text style={{color:colors.ink}}>Atualizar lista</Text>
     </Pressable>
     {users.map(user => <View key={user.id} style={styles.row}>
       <Text style={styles.label}>{user.name}</Text>
-      <Text>{user.email}</Text><Text>{labels[user.role]}</Text>
+      <Text style={{color:colors.ink}}>{user.email}</Text><Text style={{color:colors.ink}}>{labels[user.role]}</Text>
+      {user.role==='student' && <View style={{gap:10,marginTop:8}}>
+        <Link href={{pathname:'/training',params:{userId:user.id}}} style={{color:colors.green,fontWeight:'700'}}>Passar treino →</Link>
+        <Link href={{pathname:'/nutrition',params:{userId:user.id}}} style={{color:colors.green,fontWeight:'700'}}>Passar dieta →</Link>
+      </View>}
     </View>)}
-    {!users.length && !loading && <Text>Nenhum usuário carregado.</Text>}
+    {!users.length && !loading && <Text style={{color:colors.ink}}>Nenhum usuário carregado.</Text>}
     {loading && <ActivityIndicator />}
     {nextOffset !== null && <Pressable accessibilityRole="button" disabled={loading}
-      onPress={() => { setLoading(true); void load(nextOffset); }} style={styles.action}><Text>Carregar mais</Text></Pressable>}
+      onPress={() => { setLoading(true); void load(nextOffset); }} style={styles.action}><Text style={{color:colors.ink}}>Carregar mais</Text></Pressable>}
   </View>;
 }
-const styles = StyleSheet.create({
+const makeStyles=(colors: ReturnType<typeof useUI>['colors'])=>StyleSheet.create({
   panel: { marginTop: 24, gap: 8 },
-  title: { fontSize: 19, fontWeight: '700', color: '#28513e', marginTop: 12 },
-  label: { fontWeight: '600', color: '#28513e' },
-  input: { borderWidth: 1, borderColor: '#cbd7c3', borderRadius: 10, minHeight: 48, padding: 12 },
-  action: { minHeight: 48, padding: 12, backgroundColor: '#eaf2df', borderRadius: 10, justifyContent: 'center' },
-  row: { borderBottomWidth: 1, borderColor: '#dfe7d7', paddingVertical: 12, gap: 4 },
+  title: { fontSize: 19, fontWeight: '700', color: colors.ink, marginTop: 12 },
+  label: { fontWeight: '600', color: colors.ink },
+  input: { borderWidth: 1, borderColor: colors.line, borderRadius: 10, minHeight: 48, padding: 12, color: colors.ink },
+  action: { minHeight: 48, padding: 12, backgroundColor: colors.soft, borderRadius: 10, justifyContent: 'center' },
+  row: { borderBottomWidth: 1, borderColor: colors.line, paddingVertical: 12, gap: 4 },
 });

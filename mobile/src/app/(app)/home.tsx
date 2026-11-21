@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { useSession } from '../../lib/session';
 import { useResource } from '../../lib/resource';
 import { dateLabel, labels, message, today } from '../../lib/api';
-import { Button, Card, Copy, Heading, Loading, Notice, Page, s } from '../../components/ui';
+import { Button, Card, Copy, Heading, Loading, Notice, Page, useUI } from '../../components/ui';
 type Dashboard = { plans: { workout?: number; nutrition?: number }; completed: { workout?: number; nutrition?: number }; waterMl: number; lastCheckin: { day: string; weightKg: number } | null };
 export default function Home() {
+  const {s}=useUI();
   const { user, call } = useSession();
   const date = today();
   const { data, loading, error, reload } = useResource<Dashboard>(`app/dashboard?day=${date}`);

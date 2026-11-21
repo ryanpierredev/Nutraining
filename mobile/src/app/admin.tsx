@@ -2,9 +2,10 @@ import { useCallback } from 'react';
 import { Link, Redirect } from 'expo-router';
 import { useSession } from '../lib/session';
 import AdminPanel from '../components/AdminPanel';
-import { Loading, Page, s } from '../components/ui';
+import { Loading, Page, useUI } from '../components/ui';
 import { type RequestOptions } from '../lib/api';
 export default function Admin() {
+  const {s}=useUI();
   const { user, token, call, loading } = useSession();
   const request = useCallback((path: string, options: RequestOptions) => call(`admin/${path}`, options), [call]);
   if (loading) return <Loading />;
