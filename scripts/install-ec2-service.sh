@@ -24,7 +24,9 @@ if systemctl cat nutraining-api.service >/dev/null 2>&1; then
   echo 'nutraining-api.service já existe; use scripts/update-ec2.sh.' >&2
   exit 1
 fi
-sudo -v
+# Validate command execution, not timestamp authentication (sudo -v).
+# EC2 NOPASSWD rules can allow commands while still requiring auth for -v.
+sudo -n true || { echo 'É necessário sudo sem senha (ou autenticação válida) para instalar o serviço.' >&2; exit 1; }
 cd api
 npm ci --omit=dev
 node --env-file=.env migrate.mjs
@@ -32,8 +34,8 @@ cd ..
 UNIT=$(mktemp)
 trap 'rm -f "$UNIT"' EXIT
 sed -e "s|@USER@|$APP_USER|g" -e "s|@ROOT@|$ROOT|g" -e "s|@NODE@|$NODE|g" deploy/nutraining-api.service.in > "$UNIT"
-sudo install -m 644 "$UNIT" /etc/systemd/system/nutraining-api.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now nutraining-api.service
+sudo -n install -m 644 "$UNIT" /etc/systemd/system/nutraining-api.service
+sudo -n systemctl daemon-reload
+sudo -n systemctl enable --now nutraining-api.service
 cd api
 PORT=3101 node --env-file=.env check-health.mjs
