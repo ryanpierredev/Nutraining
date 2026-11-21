@@ -27,15 +27,22 @@ Dentro de api/:
 Configure a senha real do PostgreSQL somente nesse arquivo local.
 
     npm ci
+    node --env-file=.env migrate.mjs
     node --env-file=.env server.mjs
 
-A migração 001 deve ser executada uma única vez em um banco novo.
-O banco atual do EC2 já foi preparado.
+O comando migrate aplica somente as migrações pendentes, com transação e bloqueio de concorrência. Faça backup antes de atualizar um banco existente.
 
 ## Estado atual
 
-Cadastro, login, identificação do perfil e logout implementados.
-Os módulos completos de treino, nutrição e acompanhamento ainda estão pendentes.
+- Cadastro, login, sessão persistente e administração de usuários.
+- Início com atividades concluídas do dia, hidratação e último registro de peso.
+- Treinos com exercícios, séries, repetições, descanso e marcação de conclusão diária.
+- Planos alimentares com horários, alimentos/porções e registro de cada refeição.
+- Evolução com peso, cintura opcional, observações e correção/exclusão de registros.
+- Vínculo autorizado pelo aluno com personal/nutricionista via código profissional.
+- Profissionais acompanham apenas alunos vinculados e criam planos da própria especialidade.
+
+Os dados vêm da API e persistem no PostgreSQL. Não são inseridos planos ou prescrições automáticas. Veja [funcionalidades e validação](docs/FUNCIONALIDADES.md).
 
 Nunca versione senhas, tokens, chaves privadas ou arquivos .env locais.
 
