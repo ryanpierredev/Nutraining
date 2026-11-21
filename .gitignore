@@ -21,3 +21,6 @@ App.before-auth.tsx
 server.before-auth.mjs
 
 .DS_Store
+
+# Isolated EC2 Node runtime (downloaded and verified by scripts/setup-node24.sh).
+.runtime/

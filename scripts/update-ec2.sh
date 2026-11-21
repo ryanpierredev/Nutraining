@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/node-runtime.sh
 API_SERVICE=${API_SERVICE:-nutraining-api.service}
 [[ -z "$(git status --porcelain)" ]] || { echo 'Checkout com alterações locais. Preserve-as antes de atualizar.' >&2; exit 1; }
 [[ "$(git branch --show-current)" == main ]] || { echo 'Execute na branch main após o merge.' >&2; exit 1; }

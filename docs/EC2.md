@@ -5,7 +5,7 @@ Código, migrações, scripts e documentação devem ser alterados no Git e revi
 ## Pré-requisitos existentes
 
 - Checkout na branch `main`, sem alterações locais, com acesso de leitura ao GitHub.
-- Node.js 24 e npm; PostgreSQL existente com backup antes da atualização.
+- Node.js 24 e npm; PostgreSQL existente com backup antes da atualização. Se o Node global for anterior à versão 24, execute `bash scripts/setup-node24.sh`. O script baixa o binário oficial de nodejs.org por HTTPS e verifica SHA-256; suporta Linux x64 e arm64. Instala em `.runtime/` (ignorado pelo Git), sem sudo, sem alterar `/usr/bin/node` e sem modificar o perfil do shell. Instalação e atualização da API selecionam esse runtime automaticamente.
 - `api/.env` com PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD e PORT existentes.
 - Usuário do banco com permissão para aplicar migrações (ALTER TABLE). Não execute testes no banco de produção.
 - Nginx existente encaminhando para `127.0.0.1:3101`. O serviço abaixo fixa essa porta e não modifica Nginx, certificados ou outros aplicativos.
@@ -16,6 +16,7 @@ Após integrar esta branch à `main`, em `/home/ubuntu/apps/nutraining-git`, com
 
 ```bash
 git pull --ff-only origin main
+bash scripts/setup-node24.sh
 bash scripts/install-ec2-service.sh
 ```
 
@@ -50,10 +51,10 @@ Cadastre sua conta pelo aplicativo e, uma única vez, execute no checkout do EC2
 
 ```bash
 cd api
-node --env-file=.env bootstrap-admin.mjs seu-email@example.com
+../.runtime/node/bin/node --env-file=.env bootstrap-admin.mjs seu-email@example.com
 ```
 
-O comando promove a conta existente e revoga suas sessões. Faça login novamente para abrir o painel. Ele recusa nova promoção se já existir administrador. Depois, novos administradores são cadastrados pelo painel. Nenhuma senha é recebida pela linha de comando.
+Se optou por Node 24 global, use `node` em vez de `../.runtime/node/bin/node`. O comando promove a conta existente e revoga suas sessões. Faça login novamente para abrir o painel. Ele recusa nova promoção se já existir administrador. Depois, novos administradores são cadastrados pelo painel. Nenhuma senha é recebida pela linha de comando.
 
 ## Aplicativo
 
