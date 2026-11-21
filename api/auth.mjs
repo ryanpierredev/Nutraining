@@ -114,7 +114,7 @@ export function createRequireAuth(pool) {
   };
 }
 
-export function createAuthRouter(pool) {
+export function createAuthRouter(pool, { administrative = false } = {}) {
   const router = Router();
   const requireAuth = createRequireAuth(pool);
 
@@ -131,7 +131,28 @@ export function createAuthRouter(pool) {
     next();
   });
 
-  router.post('/register', attempts, async (req, res, next) => {
+  if (administrative) {
+    router.use(requireAuth, (req, res, next) => {
+      if (req.auth.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Acesso exclusivo do administrador.' });
+      }
+      next();
+    });
+    router.get('/users', async (req, res) => {
+      const offset = Number(req.query.offset ?? 0);
+      if (!Number.isSafeInteger(offset) || offset < 0) {
+        return res.status(400).json({ error: 'Página inválida.' });
+      }
+      const result = await pool.query(
+        `SELECT id, name, email, role, professional_code FROM public.nt_users
+         ORDER BY created_at DESC, id DESC LIMIT 51 OFFSET $1`, [offset],
+      );
+      res.json({ users: result.rows.slice(0, 50).map(publicUser),
+        nextOffset: result.rows.length > 50 ? offset + 50 : null });
+    });
+  }
+
+  router.post(administrative ? '/users' : '/register', attempts, async (req, res, next) => {
     const body = req.body || {};
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     const email = normalizeEmail(body.email);
@@ -142,7 +163,7 @@ export function createAuthRouter(pool) {
       [...name].length > 120 ||
       !validEmail(email) ||
       !validPassword(body.password) ||
-      !roles.has(role)
+      !(roles.has(role) || (administrative && role === 'admin'))
     ) {
       return res.status(400).json({
         error: 'Informe nome, e-mail, perfil válido e senha de 12 a 128 caracteres.',
@@ -150,7 +171,7 @@ export function createAuthRouter(pool) {
     }
 
     const passwordHash = await hashPassword(body.password);
-    const code = role === 'student'
+    const code = !['trainer', 'nutritionist'].includes(role)
       ? null
       : randomBytes(12).toString('hex');
 
@@ -168,7 +189,7 @@ export function createAuthRouter(pool) {
       );
 
       const user = publicUser(result.rows[0]);
-      const session = await createSession(client, user.id);
+      const session = administrative ? {} : await createSession(client, user.id);
 
       await client.query('COMMIT');
       res.status(201).json({ user, ...session });
@@ -186,6 +207,8 @@ export function createAuthRouter(pool) {
       client.release();
     }
   });
+
+  if (administrative) return router;
 
   router.post('/login', attempts, async (req, res) => {
     const email = normalizeEmail(req.body?.email);

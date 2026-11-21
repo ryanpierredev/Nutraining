@@ -38,3 +38,9 @@ Cadastro, login, identificação do perfil e logout implementados.
 Os módulos completos de treino, nutrição e acompanhamento ainda estão pendentes.
 
 Nunca versione senhas, tokens, chaves privadas ou arquivos .env locais.
+
+## Administração e atualizações
+
+O administrador pode listar usuários e cadastrar alunos, personal trainers, nutricionistas e outros administradores pelo aplicativo. O cadastro público nunca permite selecionar o perfil administrador.
+
+Consulte [atualização do EC2 pelo GitHub](docs/EC2.md) para migrações, criação do primeiro administrador e comandos de atualização. Todas as alterações de código e banco são versionadas; configurações e segredos locais não vão para o Git.
