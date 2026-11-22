@@ -2,7 +2,7 @@
   "expo": {
     "name": "Nutraining",
     "slug": "nutraining-mobile",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/nutraining-icon.png",
     "userInterfaceStyle": "automatic",
@@ -16,7 +16,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.ryanpierredev.nutrainingmobile",
-      "versionCode": 3
+      "versionCode": 4
     },
     "web": {
       "favicon": "./assets/favicon.png"
