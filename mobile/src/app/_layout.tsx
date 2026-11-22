@@ -1,9 +1,25 @@
-import { Stack } from 'expo-router';
+import { useEffect } from 'react';
+import { Appearance, Platform } from 'react-native';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { SessionProvider } from '../lib/session';
+import { useTheme } from '../components/ui';
+
+function Navigation() {
+  const { colors, mode } = useTheme();
+  useEffect(() => {
+    if (Platform.OS === 'web') document.documentElement.style.colorScheme = mode;
+    else Appearance.setColorScheme(mode);
+  }, [mode]);
+  const base = mode === 'dark' ? DarkTheme : DefaultTheme;
+  return <ThemeProvider value={{ ...base, colors: { ...base.colors, background: colors.paper, card: colors.surface, text: colors.ink, border: colors.line, primary: colors.green } }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.paper }} edges={['top', 'left', 'right']}>
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }} />
+    </SafeAreaView>
+  </ThemeProvider>;
+}
 export default function Layout() {
-  return <SafeAreaProvider><SessionProvider><SafeAreaView style={{ flex: 1, backgroundColor: '#f5f7f0' }} edges={['top', 'left', 'right']}>
-    <StatusBar style="dark" /><Stack screenOptions={{ headerShown: false }} />
-  </SafeAreaView></SessionProvider></SafeAreaProvider>;
+  return <SafeAreaProvider><SessionProvider><Navigation /></SessionProvider></SafeAreaProvider>;
 }

@@ -1,16 +1,11 @@
-import { useCallback } from 'react';
-import { Link, Redirect } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { useSession } from '../lib/session';
 import AdminPanel from '../components/AdminPanel';
-import { Loading, Page, s } from '../components/ui';
-import { type RequestOptions } from '../lib/api';
+import { Button, Loading, Page } from '../components/ui';
 export default function Admin() {
-  const { user, token, call, loading } = useSession();
-  const request = useCallback((path: string, options: RequestOptions) => call(`admin/${path}`, options), [call]);
+  const { user, loading } = useSession();
   if (loading) return <Loading />;
-  if (user?.role !== 'admin') return <Redirect href="/home" />;
-  return <Page title="Administração." subtitle="Gerencie o acesso dos usuários ao Nutraining.">
-    <Link href="/profile" style={s.chipText}>← Voltar para sua conta</Link>
-    <AdminPanel token={token} request={request} />
-  </Page>;
+  if (!user) return <Redirect href="/" />;
+  if (user.role !== 'admin') return <Redirect href="/settings" />;
+  return <Page title="Administração"><Button title="Voltar aos ajustes" icon="arrow-left" secondary onPress={() => router.dismissTo('/settings')} /><AdminPanel /></Page>;
 }

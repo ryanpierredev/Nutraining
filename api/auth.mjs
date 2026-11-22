@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { createAccountRouter, publicUser } from './account.mjs';
+import { createDirectoryRouter } from './directory.mjs';
 import { rateLimit } from 'express-rate-limit';
 import {
   randomBytes,
@@ -35,16 +37,6 @@ const validPassword = (value) =>
   value.length >= 12 &&
   value.length <= 128;
 
-function publicUser(row) {
-  return {
-    id: row.id,
-    name: row.name,
-    email: row.email,
-    role: row.role,
-    professionalCode: row.professional_code,
-  };
-}
-
 async function hashPassword(password) {
   const salt = randomBytes(16).toString('hex');
   const key = await scrypt(password, salt, 64, scryptOptions);
@@ -64,15 +56,17 @@ async function matchesPassword(password, storedHash) {
   return timingSafeEqual(key, Buffer.from(digest, 'hex'));
 }
 
-async function createSession(database, userId) {
+async function createSession(database, userId, deviceLabel) {
+  const label = typeof deviceLabel === 'string'
+    ? [...deviceLabel.replace(/\p{C}/gu, ' ').trim()].slice(0, 80).join('') : '';
   const token = randomBytes(32).toString('base64url');
 
   const result = await database.query(
     `INSERT INTO public.nt_sessions
-       (token_hash, user_id, expires_at)
-     VALUES ($1, $2, NOW() + INTERVAL '7 days')
+       (token_hash, user_id, device_label, last_seen_at, expires_at)
+     VALUES ($1, $2, $3, NOW(), NOW() + INTERVAL '7 days')
      RETURNING expires_at`,
-    [tokenHash(token), userId],
+    [tokenHash(token), userId, label || null],
   );
 
   return {
@@ -94,7 +88,12 @@ export function createRequireAuth(pool) {
     const hash = tokenHash(match[1]);
 
     const result = await pool.query(
-      `SELECT u.id, u.name, u.email, u.role, u.professional_code
+      `WITH seen AS (
+         UPDATE public.nt_sessions SET last_seen_at=NOW()
+         WHERE token_hash=$1 AND expires_at>NOW()
+           AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '5 minutes')
+       )
+       SELECT u.id, u.name, u.email, u.role, u.professional_code, u.theme, u.created_at, s.id AS session_id
        FROM public.nt_sessions s
        JOIN public.nt_users u ON u.id = s.user_id
        WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
@@ -107,7 +106,7 @@ export function createRequireAuth(pool) {
 
     req.auth = {
       user: publicUser(result.rows[0]),
-      tokenHash: hash,
+      sessionId: result.rows[0].session_id,
     };
 
     next();
@@ -138,18 +137,7 @@ export function createAuthRouter(pool, { administrative = false } = {}) {
       }
       next();
     });
-    router.get('/users', async (req, res) => {
-      const offset = Number(req.query.offset ?? 0);
-      if (!Number.isSafeInteger(offset) || offset < 0) {
-        return res.status(400).json({ error: 'Página inválida.' });
-      }
-      const result = await pool.query(
-        `SELECT id, name, email, role, professional_code FROM public.nt_users
-         ORDER BY created_at DESC, id DESC LIMIT 51 OFFSET $1`, [offset],
-      );
-      res.json({ users: result.rows.slice(0, 50).map(publicUser),
-        nextOffset: result.rows.length > 50 ? offset + 50 : null });
-    });
+    router.use(createDirectoryRouter(pool));
   }
 
   router.post(administrative ? '/users' : '/register', attempts, async (req, res, next) => {
@@ -182,14 +170,14 @@ export function createAuthRouter(pool, { administrative = false } = {}) {
 
       const result = await client.query(
         `INSERT INTO public.nt_users
-           (name, email, password_hash, role, professional_code)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, name, email, role, professional_code`,
-        [name, email, passwordHash, role, code],
+           (name, email, password_hash, role, professional_code, registration_source, registered_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, name, email, role, professional_code, theme, created_at`,
+        [name, email, passwordHash, role, code, administrative ? 'admin' : 'self', administrative ? req.auth.user.id : null],
       );
 
       const user = publicUser(result.rows[0]);
-      const session = administrative ? {} : await createSession(client, user.id);
+      const session = administrative ? {} : await createSession(client, user.id, body.deviceLabel);
 
       await client.query('COMMIT');
       res.status(201).json({ user, ...session });
@@ -219,7 +207,7 @@ export function createAuthRouter(pool, { administrative = false } = {}) {
     }
 
     const result = await pool.query(
-      `SELECT id, name, email, role, professional_code, password_hash
+      `SELECT id, name, email, role, professional_code, theme, created_at, password_hash
        FROM public.nt_users
        WHERE lower(email) = $1`,
       [email],
@@ -235,22 +223,10 @@ export function createAuthRouter(pool, { administrative = false } = {}) {
       return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
     }
 
-    const session = await createSession(pool, row.id);
+    const session = await createSession(pool, row.id, req.body.deviceLabel);
     res.json({ user: publicUser(row), ...session });
   });
 
-  router.get('/me', requireAuth, (req, res) => {
-    res.json({ user: req.auth.user });
-  });
-
-  router.post('/logout', requireAuth, async (req, res) => {
-    await pool.query(
-      'DELETE FROM public.nt_sessions WHERE token_hash = $1',
-      [req.auth.tokenHash],
-    );
-
-    res.status(204).end();
-  });
-
+  router.use(requireAuth, createAccountRouter(pool));
   return router;
 }

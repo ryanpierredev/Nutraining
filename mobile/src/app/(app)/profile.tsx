@@ -1,13 +1,16 @@
 import { useState } from 'react';
-import { Alert, Platform, Text } from 'react-native';
-import { Link } from 'expo-router';
+import { Text } from 'react-native';
+import { router } from 'expo-router';
 import { useSession } from '../../lib/session';
 import { useResource } from '../../lib/resource';
 import { labels, message, type Role } from '../../lib/api';
-import { Button, Card, Copy, Field, Heading, Loading, Notice, Page, s } from '../../components/ui';
+import { ActionRow, Button, Card, Copy, Field, Heading, Loading, Notice, Page, confirmAction, useTheme } from '../../components/ui';
+import ProfileCard from '../../components/ProfileCard';
+
 type Professional = { id: string; name: string; role: Role; professionalCode: string };
 export default function Profile() {
-  const { user, call, signOut } = useSession();
+  const { s } = useTheme();
+  const { user, call } = useSession();
   const [code, setCode] = useState(''); const [notice, setNotice] = useState(''); const [busy, setBusy] = useState(false);
   const links = useResource<{ professionals: Professional[] }>(user?.role === 'student' ? 'app/connections' : null);
   async function connect() {
@@ -22,19 +25,13 @@ export default function Profile() {
   }
   function confirmDisconnect(id: string) {
     const detail = 'O profissional perderá acesso aos seus dados. Os planos recebidos continuarão na sua conta.';
-    if (Platform.OS === 'web') { if (window.confirm(detail)) void disconnect(id); }
-    else Alert.alert('Remover vínculo?', detail, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Remover vínculo', style: 'destructive', onPress: () => void disconnect(id) }]);
+    confirmAction('Remover vínculo?', detail, 'Remover vínculo', () => void disconnect(id));
   }
-  async function logout() {
-    setBusy(true); setNotice('');
-    try { await signOut(); } catch (failure) { setNotice(message(failure)); } finally { setBusy(false); }
-  }
-  return <Page title="Sua conta." subtitle="Seus dados e quem acompanha você.">
-    <Card><Text style={s.chipText}>{labels[user?.role || 'student'].toUpperCase()}</Text><Heading>{user?.name}</Heading><Copy>{user?.email}</Copy>
-      {!!user?.professionalCode && <><Heading>Seu código profissional</Heading><Text selectable style={{ fontSize: 17, fontWeight: '700', color: '#285b43' }}>{user.professionalCode}</Text>
-        <Copy>Compartilhe com seus alunos. Eles precisam inserir esse código na própria conta para autorizar o vínculo.</Copy></>}
-      {user?.role === 'admin' && <Link href="/admin" style={s.chipText}>Administrar usuários →</Link>}
-    </Card>
+  return <Page title="Perfil">
+    <ProfileCard />
+    <Card><ActionRow icon="settings" title="Configurações" detail="Aparência, sessões e acesso à conta" onPress={() => router.navigate('/settings')} /></Card>
+    {!!user?.professionalCode && <Card><Heading>Seu código profissional</Heading><Text selectable style={s.label}>{user.professionalCode}</Text>
+      <Copy>Compartilhe com seus alunos para que eles autorizem o acompanhamento no perfil deles.</Copy></Card>}
     {user?.role === 'student' && <>
       <Card><Heading>Conecte seu acompanhamento</Heading>
         <Copy>Ao vincular um profissional, você permite que ele veja sua evolução e gerencie os planos da especialidade dele. Você pode remover o vínculo quando quiser.</Copy>
@@ -47,7 +44,6 @@ export default function Profile() {
       {links.data?.professionals.map(pro => <Card key={pro.id}><Heading>{pro.name}</Heading><Copy>{labels[pro.role]}</Copy>
         <Button title="Remover vínculo" secondary disabled={busy} onPress={() => confirmDisconnect(pro.id)} /></Card>)}
     </>}
-    <Notice>{notice}</Notice><Button title={busy ? 'Aguarde...' : 'Sair da conta'} secondary disabled={busy} onPress={() => void logout()} />
-    <Copy>Nutraining · versão 1.1.0</Copy>
+    <Notice>{notice}</Notice>
   </Page>;
 }

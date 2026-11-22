@@ -24,6 +24,7 @@ try {
   const ordinary = await request('auth/register', { body: ordinaryBody });
   assert.equal(ordinary.status, 201);
   assert.equal((await request('admin/users', { token: ordinary.data.token })).status, 403);
+  assert.equal((await request('admin/overview', { token: ordinary.data.token })).status, 403);
   assert.equal((await request('admin/users', { token: ordinary.data.token, body: account('admin') })).status, 403);
   // Exercise bootstrap only on an isolated database with no existing administrators.
   assert.equal(Number((await pool.query("SELECT count(*) FROM nt_users WHERE role='admin'")).rows[0].count), 0,
@@ -36,6 +37,8 @@ try {
   assert.equal(login.status, 200);
   assert.equal(login.data.user.role, 'admin');
   const token = login.data.token;
+  assert.equal((await request('admin/overview')).status, 401);
+  const baseline = (await request('admin/overview', { token })).data;
   for (const role of ['student', 'trainer', 'nutritionist', 'admin']) {
     const body = account(role);
     const created = await request('admin/users', { token, body });
@@ -44,10 +47,27 @@ try {
     assert.equal(created.data.token, undefined);
     assert.equal(created.data.user.password_hash, undefined);
     assert.equal((await request('admin/users', { token, body })).status, 409);
+    const initial = await request('admin/users?q=' + encodeURIComponent(body.email), { token });
+    assert.equal(initial.data.users.length, 1);
+    assert.equal(initial.data.users[0].registrationSource, 'admin');
+    assert.equal(initial.data.users[0].registeredByName, login.data.user.name);
+    assert.equal(initial.data.users[0].activeSessions, 0);
     const signedIn = await request('auth/login', { body });
     assert.equal(signedIn.status, 200);
     assert.equal(signedIn.data.user.role, role);
   }
+  const metrics = (await request('admin/overview', { token })).data;
+  assert.equal(metrics.totalUsers, baseline.totalUsers + 4);
+  assert.equal(metrics.recentUsers, baseline.recentUsers + 4);
+  assert.equal(metrics.activeUsers, baseline.activeUsers + 4);
+  assert.equal(metrics.activeSessions, baseline.activeSessions + 4);
+  const original = (await request('admin/users?status=active&q=' + encodeURIComponent(ordinaryBody.email), { token })).data.users;
+  assert.equal(original[0].registrationSource, 'self');
+  assert.equal(original[0].registeredByName, null);
+  assert.ok(original[0].createdAt);
+  await pool.query("UPDATE nt_sessions SET expires_at=NOW()-interval '1 day' WHERE user_id IN (SELECT id FROM nt_users WHERE email=$1)", [emails.at(-1)]);
+  assert.equal((await request('admin/users?status=active&q=' + encodeURIComponent(emails.at(-1)), { token })).data.users.length, 0);
+  assert.equal((await request('admin/overview', { token })).data.activeUsers, metrics.activeUsers - 1);
   assert.equal((await request('admin/users', { token, body: { ...account('invalid'), password: 'short' } })).status, 400);
   assert.equal((await request('admin/users?offset=-1', { token })).status, 400);
   const listed = await request('admin/users', { token });

@@ -47,11 +47,29 @@ function planItems(value, type) {
   });
 }
 
+// Hold the recipient lock until both the previous and the new assignment are committed.
+async function writeFixedPlan(pool, userId, type, replace, write) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT id FROM public.nt_users WHERE id=$1 FOR UPDATE', [userId]);
+    if (replace) {
+      await client.query('UPDATE public.nt_plans SET is_fixed=false WHERE user_id=$1 AND kind=$2 AND is_fixed AND archived_at IS NULL', [userId, type]);
+    }
+    const result = await write(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
+}
+
 export function createAppRouter(pool) {
   const router = Router();
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   router.use(createRequireAuth(pool));
-  router.use(rateLimit({ windowMs: 60000, limit: 120, standardHeaders: true, legacyHeaders: false,
+  router.use(rateLimit({ windowMs: 60000, limit: 120, keyGenerator: req => req.auth.user.id, standardHeaders: true, legacyHeaders: false,
     message: { error: 'Muitas solicitações. Aguarde um minuto.' } }));
 
   // A live relationship is required on every request, including old plans/check-ins.
@@ -103,12 +121,12 @@ export function createAppRouter(pool) {
     const type = kind(req.query.kind);
     const id = await subject(req, req.query.userId, type);
     const result = await pool.query(`SELECT p.id, p.user_id AS "userId", p.created_by AS "createdBy",
-      p.kind, p.title, p.notes, p.items, u.name AS "authorName", p.created_at AS "createdAt"
+      p.kind, p.title, p.notes, p.items, p.is_fixed AS "isFixed", u.name AS "authorName", p.created_at AS "createdAt"
       FROM public.nt_plans p JOIN public.nt_users u ON u.id=p.created_by
-      WHERE p.user_id=$1 AND p.kind=$2 AND p.archived_at IS NULL ORDER BY p.created_at DESC, p.id DESC`, [id, type]);
+      WHERE p.user_id=$1 AND p.kind=$2 AND p.archived_at IS NULL ORDER BY p.is_fixed DESC, p.created_at DESC, p.id DESC`, [id, type]);
     const selectedDay = day(req.query.day);
-    const logs = await pool.query(`SELECT plan_id AS "planId", item_index AS "itemIndex" FROM public.nt_plan_logs
-      WHERE user_id=$1 AND day=$2`, [id, selectedDay]);
+    const logs = await pool.query(`SELECT l.plan_id AS "planId", l.item_index AS "itemIndex" FROM public.nt_plan_logs l
+      JOIN public.nt_plans p ON p.id=l.plan_id WHERE l.user_id=$1 AND l.day=$2 AND p.kind=$3 AND p.archived_at IS NULL`, [id, selectedDay, type]);
     res.json({ plans: result.rows, logs: logs.rows });
   });
   router.post('/plans', async (req, res) => {
@@ -118,9 +136,27 @@ export function createAppRouter(pool) {
     const title = text(body.title, 100, true);
     const notes = text(body.notes, 2000);
     const items = planItems(body.items, type);
-    const result = await pool.query(`INSERT INTO public.nt_plans(user_id,created_by,kind,title,notes,items)
-      VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`, [id, req.auth.user.id, type, title, notes, JSON.stringify(items)]);
+    const fixed = body.isFixed ?? false;
+    if (typeof fixed !== 'boolean') fail('Opção de plano fixo inválida.');
+    if (fixed && req.auth.user.role !== 'admin') fail('Somente o administrador pode fixar planos.', 403);
+    const insert = db => db.query(`INSERT INTO public.nt_plans(user_id,created_by,kind,title,notes,items,is_fixed)
+      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`, [id, req.auth.user.id, type, title, notes, JSON.stringify(items), fixed]);
+    const result = fixed ? await writeFixedPlan(pool, id, type, true, insert) : await insert(pool);
     res.status(201).json({ id: result.rows[0].id });
+  });
+  router.put('/plans/:id/fixed', async (req, res) => {
+    if (req.auth.user.role !== 'admin') fail('Somente o administrador pode fixar planos.', 403);
+    const fixed = req.body?.isFixed;
+    if (!uuid(req.params.id) || typeof fixed !== 'boolean') fail('Plano ou opção inválida.');
+    const { rows } = await pool.query('SELECT user_id, kind FROM public.nt_plans WHERE id=$1 AND archived_at IS NULL', [req.params.id]);
+    if (!rows.length) fail('Plano não encontrado.', 404);
+    const { user_id: userId, kind: type } = rows[0];
+    await subject(req, userId, type);
+    await writeFixedPlan(pool, userId, type, fixed, async client => {
+      const result = await client.query('UPDATE public.nt_plans SET is_fixed=$2 WHERE id=$1 AND archived_at IS NULL', [req.params.id, fixed]);
+      if (!result.rowCount) fail('Plano não encontrado.', 404);
+    });
+    res.status(204).end();
   });
   router.delete('/plans/:id', async (req, res) => {
     if (!uuid(req.params.id)) fail('Plano inválido.');
@@ -129,7 +165,7 @@ export function createAppRouter(pool) {
     if (!plan) fail('Plano não encontrado.', 404);
     await subject(req, plan.user_id, plan.kind);
     if (plan.created_by !== req.auth.user.id && req.auth.user.role !== 'admin') fail('Somente o autor pode arquivar este plano.', 403);
-    await pool.query('UPDATE public.nt_plans SET archived_at=NOW() WHERE id=$1', [plan.id]);
+    await pool.query('UPDATE public.nt_plans SET archived_at=NOW(), is_fixed=false WHERE id=$1', [plan.id]);
     res.status(204).end();
   });
   router.put('/plans/:id/log', async (req, res) => {
@@ -185,13 +221,15 @@ export function createAppRouter(pool) {
     const id = await subject(req, req.query.userId);
     const selectedDay = day(req.query.day);
     const [plans, logs, water, last] = await Promise.all([
-      pool.query(`SELECT kind, count(*)::int AS count FROM public.nt_plans WHERE user_id=$1 AND archived_at IS NULL GROUP BY kind`, [id]),
+      pool.query(`SELECT kind, count(*)::int AS count, max(title) FILTER (WHERE is_fixed) AS fixed
+        FROM public.nt_plans WHERE user_id=$1 AND archived_at IS NULL GROUP BY kind`, [id]),
       pool.query(`SELECT p.kind, count(*)::int AS count FROM public.nt_plan_logs l JOIN public.nt_plans p ON p.id=l.plan_id
         WHERE l.user_id=$1 AND l.day=$2 AND p.archived_at IS NULL GROUP BY p.kind`, [id, selectedDay]),
       pool.query('SELECT water_ml FROM public.nt_hydration WHERE user_id=$1 AND day=$2', [id, selectedDay]),
       pool.query('SELECT day::text, weight_kg::float AS "weightKg" FROM public.nt_checkins WHERE user_id=$1 ORDER BY day DESC LIMIT 1', [id]),
     ]);
     res.json({ day: selectedDay, plans: Object.fromEntries(plans.rows.map(r => [r.kind, r.count])),
+      fixedPlans: Object.fromEntries(plans.rows.filter(r => r.fixed).map(r => [r.kind, r.fixed])),
       completed: Object.fromEntries(logs.rows.map(r => [r.kind, r.count])), waterMl: water.rows[0]?.water_ml ?? 0,
       lastCheckin: last.rows[0] ?? null });
   });

@@ -43,7 +43,7 @@ bash scripts/update-ec2.sh
 
 O serviço padrão é `nutraining-api.service`; para outro serviço existente, passe `API_SERVICE=nome.service`. O script confirma a branch e o checkout limpo, atualiza pelo Git, instala as dependências com lockfile, aplica migrações pendentes, reinicia a unidade e verifica a API e sua conexão ao PostgreSQL. Precisa da permissão de reinício via sudo. O primeiro `git pull` baixa também a versão atual do próprio script.
 
-As migrações têm transação e bloqueio contra execução simultânea. A 001 é ignorada no banco já preparado; a 002 acrescenta `admin`; a 003 cria vínculos, planos, atividades, hidratação e evolução. As migrações preservam usuários existentes. Não remova tabelas nem reaplique SQL manualmente. Se uma migração falhar, o script para antes do reinício. Investigue a falha antes de tentar novamente. Não há reversão automática de schema.
+As migrações têm transação e bloqueio contra execução simultânea. A 001 é ignorada no banco já preparado; a 002 acrescenta `admin`; a 003 cria vínculos, planos, atividades, hidratação e evolução. A 004 adiciona preferências, fotos de perfil, origem do cadastro, identificação de sessões e planos fixos. As migrações preservam usuários existentes. Não remova tabelas nem reaplique SQL manualmente. Se uma migração falhar, o script para antes do reinício. Investigue a falha antes de tentar novamente. Não há reversão automática de schema.
 
 ## Primeiro administrador
 

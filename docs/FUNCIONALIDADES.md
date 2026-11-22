@@ -1,8 +1,8 @@
-# Nutraining 1.1.0
+# Funcionalidades do Nutraining
 
 ## Uso
 
-Após login/cadastro, o app abre o início com navegação para Treinos, Alimentação, Evolução e Conta. Não depende de Metro/Expo Go no APK preview.
+Depois de entrar, use as abas **Início**, **Treino**, **Dieta**, **Evolução**, **Perfil** e **Ajustes**. No Perfil, você pode editar o nome e escolher uma foto da galeria. Em Ajustes, pode escolher o tema escuro ou claro e ver o dispositivo, o início, a última atividade e a expiração de cada sessão válida. É possível encerrar uma sessão de outro dispositivo ou todas as outras de uma vez.
 
 ### Aluno
 
@@ -11,18 +11,20 @@ Após login/cadastro, o app abre o início com navegação para Treinos, Aliment
 - Marque/desmarque treinos e refeições realizados hoje. Repetir a marcação não duplica o registro.
 - Arquive seus planos para tirá-los da lista ativa. Planos criados por um profissional só podem ser arquivados por ele ou por um administrador.
 - Registre água em incrementos de 250 ml; é possível desfazer. O registro é diário, sem meta médica automática.
-- Registre peso, cintura opcional e observações por data. Um novo envio no mesmo dia corrige o registro. A tela mostra os últimos 90 registros, a variação entre o primeiro/último exibido e permite excluir.
-- Em Conta, insira o código do personal ou nutricionista para autorizar acompanhamento. Remover o vínculo revoga o acesso futuro desse profissional; os planos recebidos permanecem com o aluno.
+- Registre peso, cintura opcional e observações por data. Um novo envio no mesmo dia corrige o registro. A tela mostra até 90 registros e permite filtrar os últimos 30 ou 90 dias. O gráfico alterna entre peso e cintura e mostra a variação no período.
+- Em Perfil, insira o código do personal ou nutricionista para autorizar acompanhamento. Remover o vínculo revoga o acesso futuro desse profissional; os planos recebidos permanecem com o aluno.
 
 ### Personal e nutricionista
 
-Compartilhe o código disponível em Conta. Depois de o aluno se vincular, ele aparece no seletor de alunos.
+Compartilhe o código disponível em Perfil. Depois de o aluno se vincular, ele aparece no seletor de alunos.
 
 Personal cria/consulta treinos; nutricionista cria/consulta planos alimentares. Ambos podem consultar a evolução de alunos vinculados. Os registros de conclusão pertencem ao aluno; profissionais não podem marcar atividades por ele. Alunos não vinculados são bloqueados na API, mesmo com um ID conhecido.
 
 ### Administrador
 
-Em Conta → Administrar usuários, liste/cadastre usuários dos quatro perfis. O administrador também pode consultar os alunos, criar planos e arquivá-los. A promoção do primeiro administrador continua sendo feita pelo comando versionado `bootstrap-admin.mjs`, documentado em EC2.md.
+Em **Ajustes → Área do administrador**, consulte o total de contas, cadastros dos últimos sete dias e contas com pelo menos uma sessão válida. Busque por nome ou e-mail, filtre contas ativas e veja quando e por quem cada conta foi criada. A origem só está disponível para cadastros feitos após a migração 004.
+
+Em **Treino**, **Dieta** ou **Evolução**, escolha **Para mim** ou selecione um aluno. Para um aluno, você também pode abrir essas abas diretamente pelo painel. Crie ou fixe um treino e uma dieta por pessoa. Os planos fixos aparecem na rotina diária e trocar o destaque mantém o plano anterior na lista. Nas suas próprias abas, você pode marcar atividades realizadas e registrar medidas. A promoção do primeiro administrador continua sendo feita pelo comando versionado `bootstrap-admin.mjs`, documentado em EC2.md.
 
 ## Atualizar EC2 e APK
 
@@ -34,7 +36,7 @@ git pull --ff-only origin main
 bash scripts/update-ec2.sh
 ```
 
-Isso aplica a migração 003 e reinicia a API. O Nginx e os segredos locais não são alterados. Gere também o novo APK; o APK antigo não recebe telas novas só porque a API foi atualizada:
+O script aplica a migração 004 e reinicia a API. Gere um novo APK para disponibilizar as telas novas e o seletor de fotos:
 
 ```bash
 source scripts/node-runtime.sh
@@ -60,7 +62,7 @@ node test-auth.mjs
 node test-admin.mjs
 ```
 
-`test-app.mjs` exercita consentimento, isolamento entre alunos, especialidades, criação de planos, validações, conclusão idempotente, hidratação, evolução, revogação do vínculo e acesso administrativo. As contas são temporárias e removidas ao final. `test-admin.mjs` exige banco sem administradores reais.
+`test-app.mjs` exercita consentimento, isolamento entre alunos, especialidades, criação de planos, validações, conclusão idempotente, hidratação, evolução, revogação do vínculo e acesso administrativo. Os testes de autenticação e administração também cobrem foto, tema, revogação de sessões, origem de cadastros e contas ativas. As contas são temporárias e removidas ao final. `test-admin.mjs` exige banco sem administradores reais.
 
 Em mobile, execute `npm run lint`, `npx tsc --noEmit` e `npx expo export --platform android`. A exportação valida o bundle; um APK nativo ainda precisa ser gerado pelo EAS e testado no dispositivo.
 

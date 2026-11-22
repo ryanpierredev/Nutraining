@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Redirect } from 'expo-router';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import { useSession } from '../lib/session';
 import { labels, message, type Role } from '../lib/api';
-import { Button, Card, Copy, Field, Loading, Notice, Page, s } from '../components/ui';
+import { Button, Card, Field, Loading, Notice, Page } from '../components/ui';
 export default function Login() {
   const session = useSession();
   const [signup, setSignup] = useState(false);
@@ -22,10 +22,8 @@ export default function Login() {
     catch (failure) { setError(message(failure)); }
     finally { setBusy(false); }
   }
-  return <Page title={signup ? 'Comece sua jornada.' : 'Seu próximo passo.'} subtitle="Treino, nutrição e acompanhamento em um só lugar.">
+  return <Page title={signup ? 'Criar conta' : 'Entrar'}>
     {session.error ? <Card><Notice>{session.error}</Notice><Button title="Tentar recuperar sessão" onPress={session.reload} /></Card> : <Card>
-      <Text style={s.chipText}>{signup ? 'CRIE SUA CONTA' : 'BEM-VINDO AO NUTRAINING'}</Text>
-      <Copy>{signup ? 'Escolha seu perfil para começar.' : 'Entre para acessar seu espaço.'}</Copy>
       {signup && <Field label="Nome" value={name} onChangeText={setName} maxLength={120} editable={!busy} autoCapitalize="words" />}
       <Field label="E-mail" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} maxLength={254} editable={!busy} autoComplete="email" />
       <Field label="Senha (mínimo de 12 caracteres)" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} maxLength={128} editable={!busy} autoComplete={signup ? 'new-password' : 'current-password'} />

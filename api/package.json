@@ -11,7 +11,8 @@
   "dependencies": {
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.5",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@expo/ngrok": "^4.1.3"

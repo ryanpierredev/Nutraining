@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
+import sharp from 'sharp';
 
 const baseUrl = 'http://127.0.0.1:3101/v1/auth';
 
@@ -40,6 +41,7 @@ try {
   const anonymous = await request('/me');
   assert.equal(anonymous.status, 401, 'Acesso sem login deve ser bloqueado');
 
+  let priorSessionId;
   for (const role of ['student', 'trainer', 'nutritionist']) {
     const email = `qa-${randomUUID()}@example.invalid`;
     const password = randomBytes(24).toString('base64url');
@@ -47,7 +49,7 @@ try {
 
     const registered = await request('/register', {
       method: 'POST',
-      body: { name: testName, email, password, role },
+      body: { name: testName, email, password, role, deviceLabel: 'Telefone de teste' },
     });
 
     assert.equal(registered.status, 201, `Falha no cadastro: ${role}`);
@@ -87,6 +89,41 @@ try {
     assert.equal(profile.data.user.role, role);
     assert.equal(profile.data.user.id, registered.data.user.id);
 
+    const auth = { token: login.data.token };
+    const sessions = (await request('/sessions', auth)).data.sessions;
+    assert.equal(sessions.length, 2);
+    const [current, other] = sessions;
+    assert.ok(current.current);
+    assert.equal(other.current, false);
+    assert.equal(other.deviceLabel, 'Telefone de teste');
+    assert.ok(sessions.every(s => !('token' in s) && !('token_hash' in s) && !('tokenHash' in s)));
+    assert.equal((await request('/sessions/' + current.id, { ...auth, method: 'DELETE' })).status, 400);
+    if (priorSessionId) {
+      assert.equal((await request('/sessions/' + priorSessionId, { ...auth, method: 'DELETE' })).status, 404);
+    }
+    priorSessionId = other.id;
+    if (role === 'student') {
+      // Keep the other session alive to test isolation with the next account.
+      const changes = await request('/me', { ...auth, method: 'PATCH', body: { name: testName, theme: 'light' } });
+      assert.equal(changes.data.user.theme, 'light');
+      assert.equal((await request('/me', { token: registered.data.token })).data.user.theme, 'light');
+      assert.equal((await request('/me', { ...auth, method: 'PATCH', body: { role: 'admin' } })).status, 400);
+      assert.equal((await request('/me', { ...auth, method: 'PATCH', body: { theme: 'purple' } })).status, 400);
+      const jpeg = await sharp({ create: { width: 320, height: 240, channels: 3, background: 'green' } }).jpeg().toBuffer();
+      assert.equal((await request('/me/photo', { ...auth, method: 'PUT', body: { image: jpeg.toString('base64') } })).status, 204);
+      const photo = (await request('/me/photo', { token: registered.data.token })).data.photo;
+      const meta = await sharp(Buffer.from(photo.split(',')[1], 'base64')).metadata();
+      assert.equal(meta.format, 'jpeg'); assert.equal(meta.width, 256); assert.equal(meta.height, 256);
+      assert.equal((await request('/me/photo', { ...auth, method: 'PUT', body: { image: '/9j/invalid' } })).status, 400);
+      assert.equal((await request('/me/photo', auth)).data.photo, photo);
+    } else {
+      assert.equal((await request('/me/photo', auth)).data.photo, null);
+      const path = role === 'trainer' ? '/sessions/' + other.id : '/sessions/others';
+      assert.equal((await request(path, { ...auth, method: 'DELETE' })).status, 204);
+      assert.equal((await request('/me', { token: registered.data.token })).status, 401);
+      assert.equal((await request('/sessions', auth)).data.sessions.length, 1);
+    }
+
     const logout = await request('/logout', {
       method: 'POST',
       body: {},
@@ -100,6 +137,10 @@ try {
     });
 
     assert.equal(revoked.status, 401, 'Logout deve revogar a sessão');
+    if (role === 'student') {
+      assert.equal((await request('/me/photo', { token: registered.data.token, method: 'DELETE' })).status, 204);
+      assert.equal((await request('/me/photo', { token: registered.data.token })).data.photo, null);
+    }
   }
 } finally {
   try {

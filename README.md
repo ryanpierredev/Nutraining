@@ -34,11 +34,11 @@ O comando migrate aplica somente as migrações pendentes, com transação e blo
 
 ## Estado atual
 
-- Cadastro, login, sessão persistente e administração de usuários.
+- Cadastro, login e perfil com foto. Em Ajustes, escolha o tema e veja ou encerre sessões de outros dispositivos.
 - Início com atividades concluídas do dia, hidratação e último registro de peso.
 - Treinos com exercícios, séries, repetições, descanso e marcação de conclusão diária.
 - Planos alimentares com horários, alimentos/porções e registro de cada refeição.
-- Evolução com peso, cintura opcional, observações e correção/exclusão de registros.
+- Evolução com gráficos de peso e cintura, filtros por período e edição do histórico.
 - Vínculo autorizado pelo aluno com personal/nutricionista via código profissional.
 - Profissionais acompanham apenas alunos vinculados e criam planos da própria especialidade.
 
@@ -48,7 +48,7 @@ Nunca versione senhas, tokens, chaves privadas ou arquivos .env locais.
 
 ## Administração e atualizações
 
-O administrador pode listar usuários e cadastrar alunos, personal trainers, nutricionistas e outros administradores pelo aplicativo. O cadastro público nunca permite selecionar o perfil administrador.
+Em **Ajustes → Área do administrador**, o administrador pode criar contas, consultar a origem do cadastro e filtrar contas com sessões ativas. Em **Treino**, **Dieta** e **Evolução**, pode selecionar a própria conta ou um aluno. Cada pessoa pode ter um treino fixo e uma dieta fixa em destaque na rotina diária.
 
 Consulte [atualização do EC2 pelo GitHub](docs/EC2.md) para migrações, criação do primeiro administrador e comandos de atualização. Todas as alterações de código e banco são versionadas; configurações e segredos locais não vão para o Git.
 
