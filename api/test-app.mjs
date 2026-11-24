@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
+import { insertUser } from './users.mjs';
 if (process.env.NUTRAINING_TEST_DB !== '1') throw new Error('Use banco isolado e NUTRAINING_TEST_DB=1. Nunca execute em produção.');
 const pool = new pg.Pool();
 const emails = [];
@@ -15,8 +16,9 @@ async function request(path, token, body, method = body ? 'POST' : 'GET') {
 }
 async function account(role) {
   const email = `app-test-${randomUUID()}@example.invalid`; emails.push(email);
-  const response = await request('auth/register', null, { name: 'Teste App', email, password, role });
-  assert.equal(response.status, 201);
+  await insertUser(pool, { name: 'Teste App', email, password, role, source: 'unknown' });
+  const response = await request('auth/login', null, { email, password });
+  assert.equal(response.status, 200);
   return { ...response.data.user, token: response.data.token };
 }
 const exercise = { name: 'Agachamento', sets: 3, reps: '10 a 12', restSeconds: 60 };
@@ -24,8 +26,7 @@ const meal = { name: 'Café da manhã', time: '08:00', foods: 'Fruta e iogurte �
 try {
   const student = await account('student'); const other = await account('student');
   const trainer = await account('trainer'); const nutritionist = await account('nutritionist');
-  const admin = await account('student');
-  await pool.query("UPDATE nt_users SET role='admin' WHERE id=$1", [admin.id]);
+  const admin = await account('admin');
   assert.equal((await request(`app/dashboard?day=${day}`)).status, 401);
   assert.equal((await request(`app/progress?userId=${student.id}`, other.token)).status, 403);
   assert.equal((await request(`app/progress?userId=${student.id}`, trainer.token)).status, 403);
@@ -38,23 +39,58 @@ try {
   assert.deepEqual((await request('app/clients', trainer.token)).data.clients.map(c => c.id), [student.id]);
   assert.equal((await request('app/clients', student.token)).status, 403);
   assert.equal((await request('app/connections', trainer.token, { code: nutritionist.professionalCode })).status, 403);
-  const workout = await request('app/plans', trainer.token, { kind: 'workout', userId: student.id, title: 'Treino A', items: [exercise] });
+  const workout = await request('app/plans', trainer.token, {
+    kind: 'workout', userId: student.id, title: 'Treino A', items: [exercise, { ...exercise, name: 'Remada' }],
+  });
   assert.equal(workout.status, 201);
   const nutrition = await request('app/plans', nutritionist.token, { kind: 'nutrition', userId: student.id, title: 'Plano semanal', items: [meal] });
   assert.equal(nutrition.status, 201);
+  const loadsPath = `app/plans/${workout.data.id}/exercise-loads`;
+  const previousDay = new Date(Date.parse(day) - 86400000).toISOString().slice(0, 10);
+  const saveLoad = (token, index, weightKg, date = day) =>
+    request(`${loadsPath}/${index}`, token, { day: date, weightKg }, 'PUT');
+  assert.equal((await saveLoad(other.token, 0, 10)).status, 404);
+  assert.equal((await saveLoad(trainer.token, 0, 10)).status, 404);
+  assert.equal((await saveLoad(student.token, 2, 10)).status, 400);
+  assert.equal((await saveLoad(student.token, 0, -1)).status, 400);
+  assert.equal((await saveLoad(student.token, 0, 1001)).status, 400);
+  assert.equal((await saveLoad(student.token, 0, 10, '2026-02-30')).status, 400);
+  assert.equal((await request(`app/plans/${nutrition.data.id}/exercise-loads/0`, student.token, { day, weightKg: 10 }, 'PUT')).status, 404);
+  assert.equal((await saveLoad(student.token, 0, 17.5, previousDay)).status, 200);
+  assert.equal((await saveLoad(student.token, 0, 20)).status, 200);
+  assert.equal((await saveLoad(student.token, 0, 22.5)).status, 200);
+  assert.equal((await saveLoad(student.token, 1, 0)).status, 200);
+  const history = [
+    { itemIndex: 0, day, weightKg: 22.5 },
+    { itemIndex: 0, day: previousDay, weightKg: 17.5 },
+    { itemIndex: 1, day, weightKg: 0 },
+  ];
+  for (const reader of [student, trainer, admin]) {
+    assert.deepEqual((await request(loadsPath, reader.token)).data.loads, history);
+  }
+  assert.equal((await request(loadsPath, other.token)).status, 403);
+  assert.equal((await request(loadsPath, nutritionist.token)).status, 403);
   assert.equal((await request('app/plans', trainer.token, { kind: 'nutrition', userId: student.id, title: 'Plano inválido', items: [meal] })).status, 403);
   assert.equal((await request('app/plans', nutritionist.token, { kind: 'workout', userId: student.id, title: 'Treino inválido', items: [exercise] })).status, 403);
   assert.equal((await request('app/plans', other.token, { kind: 'workout', userId: student.id, title: 'Treino indevido', items: [exercise] })).status, 403);
-  assert.equal((await request('app/plans', student.token, { kind: 'workout', title: 'Sem itens', items: [] })).status, 400);
-  assert.equal((await request('app/plans', student.token, { kind: 'workout', title: 'Inválido', items: [{ ...exercise, sets: 0 }] })).status, 400);
-  assert.equal((await request('app/plans', student.token, { kind: 'nutrition', title: 'Inválido', items: [{ ...meal, time: '25:00' }] })).status, 400);
-  assert.equal((await request('app/plans', student.token, { kind: 'nutrition', title: 'Plano completo',
+  for (const [kind, item, wrongSpecialist] of [['workout', exercise, nutritionist], ['nutrition', meal, trainer]]) {
+    const plan = { kind, title: 'Plano pessoal', items: [item] };
+    assert.equal((await request('app/plans', student.token, plan)).status, 403);
+    assert.equal((await request('app/plans', wrongSpecialist.token, plan)).status, 403);
+  }
+  assert.equal((await request('app/plans', trainer.token, { kind: 'workout', userId: other.id, title: 'Aluno sem vínculo', items: [exercise] })).status, 403);
+  assert.equal((await request('app/plans', trainer.token, { kind: 'workout', title: 'Sem itens', items: [] })).status, 400);
+  assert.equal((await request('app/plans', trainer.token, { kind: 'workout', title: 'Inválido', items: [{ ...exercise, sets: 0 }] })).status, 400);
+  assert.equal((await request('app/plans', nutritionist.token, { kind: 'nutrition', title: 'Inválido', items: [{ ...meal, time: '25:00' }] })).status, 400);
+  assert.equal((await request('app/plans', nutritionist.token, { kind: 'nutrition', title: 'Plano completo',
     items: Array.from({ length: 30 }, (_, i) => ({ ...meal, name: `Refeição ${i + 1}`, foods: 'a'.repeat(1000) })) })).status, 201);
-  assert.equal((await request('app/plans', student.token, { kind: 'nutrition', title: 'Itens demais', items: Array(31).fill(meal) })).status, 400);
-  const selfPlan = await request('app/plans', student.token, { kind: 'workout', title: 'Meu treino', items: [exercise] });
-  assert.equal(selfPlan.status, 201);
+  assert.equal((await request('app/plans', nutritionist.token, { kind: 'nutrition', title: 'Itens demais', items: Array(31).fill(meal) })).status, 400);
+  // Preserve plans created by a student before plan authoring was restricted.
+  const { rows: [legacyPlan] } = await pool.query(`INSERT INTO nt_plans(user_id,created_by,kind,title,items)
+    VALUES ($1,$1,'workout','Meu treino anterior',$2) RETURNING id`, [student.id, JSON.stringify([exercise])]);
   const ownPlans = await request(`app/plans?kind=workout&day=${day}`, student.token);
   assert.equal(ownPlans.data.plans.length, 2);
+  assert.ok(ownPlans.data.plans.some(plan => plan.id === legacyPlan.id));
   assert.equal(ownPlans.data.plans.find(p => p.id === workout.data.id).authorName, trainer.name);
   assert.equal((await request(`app/plans?kind=workout&day=${day}&userId=${student.id}`, trainer.token)).status, 200);
   assert.equal((await request(`app/plans?kind=workout&day=${day}&userId=${student.id}`, nutritionist.token)).status, 403);
@@ -85,12 +121,19 @@ try {
   await request(logPath, student.token, { day, itemIndex: -1, completed: false }, 'PUT');
   assert.equal((await request(`app/dashboard?day=${day}`, student.token)).data.completed.workout, undefined);
   assert.equal((await request(`app/plans/${workout.data.id}`, student.token, undefined, 'DELETE')).status, 403);
-  assert.equal((await request(`app/plans/${selfPlan.data.id}`, student.token, undefined, 'DELETE')).status, 204);
+  assert.equal((await request(`app/plans/${legacyPlan.id}`, student.token, undefined, 'DELETE')).status, 403);
+  assert.equal((await request(`app/plans/${legacyPlan.id}`, trainer.token, undefined, 'DELETE')).status, 403);
+  assert.equal((await request(`app/plans/${legacyPlan.id}`, admin.token, undefined, 'DELETE')).status, 204);
   assert.equal((await request(`app/connections/${trainer.id}`, student.token, undefined, 'DELETE')).status, 204);
   assert.equal((await request(`app/progress?userId=${student.id}`, trainer.token)).status, 403);
   assert.equal((await request(`app/plans/${workout.data.id}`, trainer.token, undefined, 'DELETE')).status, 403);
+  assert.equal((await request(loadsPath, trainer.token)).status, 403);
   assert.equal((await request(`app/plans?kind=workout&day=${day}`, student.token)).data.plans.length, 1);
   assert.equal((await request(`app/plans/${workout.data.id}`, admin.token, undefined, 'DELETE')).status, 204);
+  assert.equal((await saveLoad(student.token, 0, 30)).status, 404);
+  assert.deepEqual((await request(loadsPath, student.token)).data.loads, history);
+  const archivedWorkouts = await request(`app/plans?kind=workout&day=${day}&archived=1`, student.token);
+  assert.ok(archivedWorkouts.data.plans.some(plan => plan.id === workout.data.id));
   assert.equal((await request(`app/progress/${day}`, student.token, undefined, 'DELETE')).status, 204);
   assert.equal((await request('app/progress', student.token)).data.checkins.length, 0);
   const diet = { kind: 'nutrition', title: 'Dieta diária', items: [meal], isFixed: true };

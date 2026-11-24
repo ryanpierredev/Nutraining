@@ -1,4 +1,8 @@
 export type Role = 'student' | 'trainer' | 'nutritionist' | 'admin';
+export type PlanKind = 'workout' | 'nutrition';
+export function canManagePlan(role: Role | undefined, kind: PlanKind) {
+  return role === 'admin' || role === (kind === 'workout' ? 'trainer' : 'nutritionist');
+}
 export type ThemeMode = 'dark' | 'light';
 export type User = { id: string; name: string; email: string; role: Role; professionalCode: string | null; theme: ThemeMode; createdAt: string };
 export const labels: Record<Role, string> = { student: 'Aluno', trainer: 'Personal', nutritionist: 'Nutricionista', admin: 'Administrador' };

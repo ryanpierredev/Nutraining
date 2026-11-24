@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from 'react';
+import { useState, type ComponentProps, type ReactNode } from 'react';
 import { useIsFocused } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
@@ -95,10 +95,25 @@ export function ActionRow({ icon, title, detail, onPress }: { icon: IconName; ti
     <Feather name="chevron-right" size={18} color={colors.muted} />
   </Pressable>;
 }
-export function Field({ label, ...props }: TextInputProps & { label: string }) {
+type FieldProps = TextInputProps & { label: string };
+export function Field({ label, ...props }: FieldProps) {
   const { s, colors, mode } = useTheme();
+  const { trackActivity } = useSession();
   return <View style={{ gap: 6 }}><Text style={s.label}>{label}</Text><TextInput accessibilityLabel={label} keyboardAppearance={mode} selectionColor={colors.green}
-    placeholderTextColor={colors.muted} {...props} style={[s.input, props.multiline && { minHeight: 82, textAlignVertical: 'top' }, props.style]} /></View>;
+    placeholderTextColor={colors.muted} {...props} onChangeText={value => { trackActivity(); props.onChangeText?.(value); }} style={[s.input, props.multiline && { minHeight: 82, textAlignVertical: 'top' }, props.style]} /></View>;
+}
+export function PasswordField({ style, ...props }: Omit<FieldProps, 'secureTextEntry' | 'multiline'>) {
+  const { colors } = useTheme();
+  const [visible, setVisible] = useState(false);
+  const label = visible ? 'Ocultar senha' : 'Mostrar senha';
+  return <View>
+    <Field autoCapitalize="none" autoCorrect={false} {...props} secureTextEntry={!visible} style={[style, { paddingRight: 54 }]} />
+    <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={() => setVisible(value => !value)}
+      style={({ pressed }) => ({ position: 'absolute', right: 2, bottom: 1, width: 46, height: 44,
+        alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.65 : 1 })}>
+      <Feather name={visible ? 'eye-off' : 'eye'} size={20} color={colors.green} />
+    </Pressable>
+  </View>;
 }
 export function Empty({ title, detail }: { title: string; detail: string }) { return <Card><Heading>{title}</Heading><Copy>{detail}</Copy></Card>; }
 export function Loading() { return <ActivityIndicator accessibilityLabel="Carregando" color={useTheme().colors.green} style={{ margin: 20 }} />; }

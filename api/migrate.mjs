@@ -9,7 +9,7 @@ try {
   const versions = exists.rows[0].name
     ? new Set((await client.query('SELECT version FROM public.nt_schema_migrations')).rows.map(r => r.version))
     : new Set();
-  for (const [version, file] of [[1, '001_auth.sql'], [2, '002_admin.sql'], [3, '003_app.sql'], [4, '004_account_and_plans.sql']]) {
+  for (const [version, file] of [[1, '001_auth.sql'], [2, '002_admin.sql'], [3, '003_app.sql'], [4, '004_account_and_plans.sql'], [5, '005_account_creators.sql'], [6, '006_exercise_loads.sql']]) {
     if (versions.has(version)) continue;
     await client.query(await readFile(new URL(`./migrations/${file}`, import.meta.url), 'utf8'));
     console.log(`Migração ${version} aplicada.`);

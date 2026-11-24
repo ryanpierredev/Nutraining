@@ -18,15 +18,14 @@ Caso não esteja autenticado no Expo, use `npx eas-cli@latest login` no terminal
 
 O perfil preview gera um APK interno, com `EXPO_PUBLIC_API_URL=https://3.142.79.208:9443` incorporado no bundle. Essa URL é pública e não é um segredo. Não desative a validação HTTPS. O aplicativo exige um certificado válido. Confira se não há variável conflitante para a mesma chave nas configurações do projeto Expo.
 
-Ao terminar, abra o link de instalação fornecido pelo EAS no celular e instale a atualização. Esta versão se identifica como 1.2.0 (versionCode 4). O pacote continua `com.ryanpierredev.nutrainingmobile`. Aplique a migração 004 à API antes de usar as telas novas. A geração na nuvem exige conectividade com Expo e pode consumir a cota de builds da conta.
+Ao terminar, abra o link de instalação fornecido pelo EAS no celular e instale a atualização. Esta versão se identifica como 1.3.0 (versionCode 5). O pacote continua `com.ryanpierredev.nutrainingmobile`. Aplique as migrações pendentes à API antes de usar as telas novas. A geração na nuvem exige conectividade com Expo e pode consumir a cota de builds da conta.
 
 Antes de builds futuros, incremente version/versionCode no Git conforme necessário. Se o Android recusar a atualização, registre o erro e confira assinatura/versionCode; não desinstale automaticamente, pois isso remove os dados locais.
 
 ## Conferir no celular
 
 1. Abra `https://3.142.79.208:9443/health` e confirme status ok com database connected.
-2. No APK novo, use “Ainda não tenho conta” para registrar uma conta normal.
-3. Promova o primeiro administrador pelo comando documentado em EC2.md, usando o mesmo e-mail; saia e entre novamente.
-4. Confira se o painel de administração aparece.
+2. Entre com uma conta existente ou crie o primeiro administrador conforme o procedimento em EC2.md.
+3. No painel do administrador, cadastre um aluno e confirme que ele consegue entrar com a senha inicial.
 
 O acesso ao health no navegador valida essa conexão no navegador; não comprova sozinho que login/cadastro funciona no APK. Se persistir o erro, registre a etapa exata e examine os logs da API (`sudo journalctl -u nutraining-api.service -n 50 --no-pager`) sem compartilhar senhas ou tokens.

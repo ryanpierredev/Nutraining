@@ -7,6 +7,8 @@ import { useResource } from '../../lib/resource';
 import { message, timestamp, type ThemeMode } from '../../lib/api';
 import { ActionRow, Button, Card, Choice, Copy, Heading, Loading, Notice, Page, confirmAction, useTheme } from '../../components/ui';
 
+import CreateAccountForm from '../../components/CreateAccountForm';
+
 type DeviceSession = { id: string; deviceLabel: string | null; current: boolean; createdAt: string; lastSeenAt: string | null; expiresAt: string };
 
 function Sessions() {
@@ -25,12 +27,12 @@ function Sessions() {
   const sessions = resource.data?.sessions;
   return <Card><View style={s.spread}><Heading>Sessões logadas</Heading>
     {sessions && <View style={s.chip}><Text style={s.chipText}>{sessions.length} {sessions.length === 1 ? 'ativa' : 'ativas'}</Text></View>}</View>
-    <Copy>Cada entrada na conta abre uma sessão. Um dispositivo pode aparecer mais de uma vez.</Copy>
+    <Copy>Cada entrada na conta abre uma sessão. Sessões sem atividade por 15 minutos são encerradas.</Copy>
     {resource.loading && <Loading />}<Notice>{resource.error || notice}</Notice>
     {sessions?.map(session => <View key={session.id} style={s.divider}>
       <View style={s.row}><Feather name="monitor" size={18} color={colors.green} /><Text style={s.label}>{session.deviceLabel || 'Dispositivo não identificado'}</Text>
         {session.current && <Text style={s.chipText}>Esta sessão</Text>}</View>
-      <Copy>Início: {timestamp(session.createdAt)}{session.lastSeenAt ? `\nÚltima atividade: ${timestamp(session.lastSeenAt)}` : ''}{`\nExpira em: ${timestamp(session.expiresAt)}`}</Copy>
+      <Copy>Início: {timestamp(session.createdAt)}{session.lastSeenAt ? `\nÚltima atividade: ${timestamp(session.lastSeenAt)}` : ''}{`\nExpira se ficar inativa até: ${timestamp(session.expiresAt)}`}</Copy>
       {!session.current && <Button title="Encerrar sessão" secondary disabled={busy} onPress={() =>
         confirmAction('Encerrar esta sessão?', session.deviceLabel || 'Esse dispositivo precisará entrar novamente.', 'Encerrar', () => void revoke(session.id))} />}
     </View>)}
@@ -39,6 +41,19 @@ function Sessions() {
     <Button title="Atualizar sessões" icon="refresh-cw" secondary disabled={busy || resource.loading} onPress={() => void resource.reload()} />
   </Card>;
 }
+function StudentRegistration() {
+  const [open, setOpen] = useState(false);
+  const [created, setCreated] = useState(false);
+  if (open) return <CreateAccountForm studentsOnly onCancel={() => setOpen(false)} onCreated={() => {
+    setOpen(false);
+    setCreated(true);
+  }} />;
+  return <Card>
+    <ActionRow icon="user-plus" title="Cadastrar aluno" detail="Criar uma conta de acesso" onPress={() => { setCreated(false); setOpen(true); }} />
+    {created && <Copy>Conta criada. Entregue a senha inicial ao aluno em particular. Para receber seu acompanhamento, ele pode vincular seu código na aba Perfil.</Copy>}
+  </Card>;
+}
+
 export default function Settings() {
   const { user, updateProfile, signOut } = useSession();
   const { s, colors, mode } = useTheme();
@@ -60,6 +75,7 @@ export default function Settings() {
         <Choice title="Claro" selected={mode === 'light'} disabled={busy} onPress={() => void changeTheme('light')} /></View>
     </Card>
     {user?.role === 'admin' && <Card accent><ActionRow icon="shield" title="Área do administrador" detail="Contas ativas, cadastros e usuários" onPress={() => router.push('/admin')} /></Card>}
+    {(user?.role === 'trainer' || user?.role === 'nutritionist') && <StudentRegistration />}
     <Notice>{error}</Notice><Sessions />
     <Button title="Sair da conta" icon="log-out" secondary disabled={busy} onPress={() => void logout()} />
   </Page>;

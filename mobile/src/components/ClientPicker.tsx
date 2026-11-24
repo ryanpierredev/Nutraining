@@ -3,18 +3,17 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Text, View } from 'react-native';
 import { useSession } from '../lib/session';
 import { useResource } from '../lib/resource';
+import { canManagePlan, type PlanKind } from '../lib/api';
 import { ActionRow, Button, Card, Copy, Empty, Field, Loading, Notice, useTheme } from './ui';
 
 type Client = { id: string; name: string; email: string };
 type Subject = { id: string; name: string; own: boolean };
-type Kind = 'workout' | 'nutrition';
-
-export default function ClientPicker({ kind, children }: { kind?: Kind; children: (subject: Subject) => ReactNode }) {
+export default function ClientPicker({ kind, children }: { kind?: PlanKind; children: (subject: Subject) => ReactNode }) {
   const { user } = useSession();
   const { s } = useTheme();
   const admin = user?.role === 'admin';
   const staff = !!user && user.role !== 'student';
-  const allowed = !kind || admin || user?.role === (kind === 'workout' ? 'trainer' : 'nutritionist');
+  const allowed = !kind || canManagePlan(user?.role, kind);
   const clients = useResource<{ clients: Client[] }>(staff && allowed ? 'app/clients' : null);
   const { recipient } = useLocalSearchParams<{ recipient?: string }>();
   const selected = typeof recipient === 'string' ? recipient : '';

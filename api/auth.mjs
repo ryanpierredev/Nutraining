@@ -1,60 +1,13 @@
 import { Router } from 'express';
 import { createAccountRouter, publicUser } from './account.mjs';
 import { createDirectoryRouter } from './directory.mjs';
+import { activeSession } from './session-policy.mjs';
 import { rateLimit } from 'express-rate-limit';
-import {
-  randomBytes,
-  createHash,
-  scrypt as scryptCallback,
-  timingSafeEqual,
-} from 'node:crypto';
-import { promisify } from 'node:util';
-
-const scrypt = promisify(scryptCallback);
-const roles = new Set(['student', 'trainer', 'nutritionist']);
-
-const scryptOptions = {
-  N: 32768,
-  r: 8,
-  p: 3,
-  maxmem: 64 * 1024 * 1024,
-};
-
-const dummyHash =
-  `scrypt-v1$${'0'.repeat(32)}$${'0'.repeat(128)}`;
+import { createHash, randomBytes } from 'node:crypto';
+import { dummyHash, insertUser, matchesPassword, normalizeEmail, roles, validEmail, validName, validPassword } from './users.mjs';
 
 const tokenHash = (token) =>
   createHash('sha256').update(token).digest('hex');
-
-const normalizeEmail = (value) =>
-  typeof value === 'string' ? value.trim().toLowerCase() : '';
-
-const validEmail = (value) =>
-  value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-
-const validPassword = (value) =>
-  typeof value === 'string' &&
-  value.length >= 12 &&
-  value.length <= 128;
-
-async function hashPassword(password) {
-  const salt = randomBytes(16).toString('hex');
-  const key = await scrypt(password, salt, 64, scryptOptions);
-  return `scrypt-v1$${salt}$${key.toString('hex')}`;
-}
-
-async function matchesPassword(password, storedHash) {
-  if (
-    typeof storedHash !== 'string' ||
-    !/^scrypt-v1\$[a-f0-9]{32}\$[a-f0-9]{128}$/.test(storedHash)
-  ) {
-    return false;
-  }
-
-  const [, salt, digest] = storedHash.split('$');
-  const key = await scrypt(password, salt, 64, scryptOptions);
-  return timingSafeEqual(key, Buffer.from(digest, 'hex'));
-}
 
 async function createSession(database, userId, deviceLabel) {
   const label = typeof deviceLabel === 'string'
@@ -88,15 +41,10 @@ export function createRequireAuth(pool) {
     const hash = tokenHash(match[1]);
 
     const result = await pool.query(
-      `WITH seen AS (
-         UPDATE public.nt_sessions SET last_seen_at=NOW()
-         WHERE token_hash=$1 AND expires_at>NOW()
-           AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL '5 minutes')
-       )
-       SELECT u.id, u.name, u.email, u.role, u.professional_code, u.theme, u.created_at, s.id AS session_id
-       FROM public.nt_sessions s
-       JOIN public.nt_users u ON u.id = s.user_id
-       WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
+      `UPDATE public.nt_sessions s SET last_seen_at=GREATEST(s.last_seen_at, NOW())
+       FROM public.nt_users u
+       WHERE u.id=s.user_id AND s.token_hash=$1 AND ${activeSession}
+       RETURNING u.id, u.name, u.email, u.role, u.professional_code, u.theme, u.created_at, s.id AS session_id`,
       [hash],
     );
 
@@ -130,6 +78,38 @@ export function createAuthRouter(pool, { administrative = false } = {}) {
     next();
   });
 
+  const creations = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 30,
+    keyGenerator: req => req.auth.user.id,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Muitos cadastros. Aguarde 15 minutos.' },
+  });
+
+  async function createAccount(req, res) {
+    const actor = req.auth.user;
+    const body = req.body ?? {};
+    const role = body.role ?? 'student';
+    if (!administrative && role !== 'student') {
+      return res.status(403).json({ error: 'Seu perfil não pode cadastrar este tipo de conta.' });
+    }
+    const email = normalizeEmail(body.email);
+    if (!roles.has(role) || !validName(body.name) || !validEmail(email) || !validPassword(body.password)) {
+      return res.status(400).json({ error: 'Informe nome, e-mail e senha de 12 a 128 caracteres.' });
+    }
+    try {
+      const row = await insertUser(pool, {
+        name: body.name, email, password: body.password, role, registeredBy: actor.id,
+        source: actor.role === 'admin' ? 'admin' : 'professional',
+      });
+      res.status(201).json({ user: publicUser(row) });
+    } catch (error) {
+      if (error.code !== '23505') throw error;
+      return res.status(409).json({ error: 'Não foi possível criar uma conta com esse e-mail.' });
+    }
+  }
+
   if (administrative) {
     router.use(requireAuth, (req, res, next) => {
       if (req.auth.user.role !== 'admin') {
@@ -138,65 +118,20 @@ export function createAuthRouter(pool, { administrative = false } = {}) {
       next();
     });
     router.use(createDirectoryRouter(pool));
+    router.post('/users', creations, createAccount);
+    return router;
   }
 
-  router.post(administrative ? '/users' : '/register', attempts, async (req, res, next) => {
-    const body = req.body || {};
-    const name = typeof body.name === 'string' ? body.name.trim() : '';
-    const email = normalizeEmail(body.email);
-    const role = body.role ?? 'student';
-
-    if (
-      [...name].length < 2 ||
-      [...name].length > 120 ||
-      !validEmail(email) ||
-      !validPassword(body.password) ||
-      !(roles.has(role) || (administrative && role === 'admin'))
-    ) {
-      return res.status(400).json({
-        error: 'Informe nome, e-mail, perfil válido e senha de 12 a 128 caracteres.',
-      });
-    }
-
-    const passwordHash = await hashPassword(body.password);
-    const code = !['trainer', 'nutritionist'].includes(role)
-      ? null
-      : randomBytes(12).toString('hex');
-
-    const client = await pool.connect();
-
-    try {
-      await client.query('BEGIN');
-
-      const result = await client.query(
-        `INSERT INTO public.nt_users
-           (name, email, password_hash, role, professional_code, registration_source, registered_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, name, email, role, professional_code, theme, created_at`,
-        [name, email, passwordHash, role, code, administrative ? 'admin' : 'self', administrative ? req.auth.user.id : null],
-      );
-
-      const user = publicUser(result.rows[0]);
-      const session = administrative ? {} : await createSession(client, user.id, body.deviceLabel);
-
-      await client.query('COMMIT');
-      res.status(201).json({ user, ...session });
-    } catch (error) {
-      await client.query('ROLLBACK').catch(() => {});
-
-      if (error.code === '23505') {
-        return res.status(409).json({
-          error: 'Não foi possível criar uma conta com esse e-mail.',
-        });
-      }
-
-      next(error);
-    } finally {
-      client.release();
-    }
+  // Return a clear error to older APKs that still have a public signup screen.
+  router.post('/register', (_req, res) => {
+    res.status(403).json({ error: 'Solicite seu cadastro a um personal, nutricionista ou administrador.' });
   });
-
-  if (administrative) return router;
+  router.post('/students', requireAuth, (req, res, next) => {
+    if (!['trainer', 'nutritionist', 'admin'].includes(req.auth.user.role)) {
+      return res.status(403).json({ error: 'Seu perfil não pode cadastrar alunos.' });
+    }
+    next();
+  }, creations, createAccount);
 
   router.post('/login', attempts, async (req, res) => {
     const email = normalizeEmail(req.body?.email);

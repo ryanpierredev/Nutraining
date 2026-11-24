@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import sharp from 'sharp';
+import { activeSession, idleDeadline } from './session-policy.mjs';
 
 export function publicUser(row) {
   return {
@@ -25,6 +26,7 @@ async function profilePhoto(base64) {
 export function createAccountRouter(pool) {
   const router = Router();
 
+  router.post('/activity', (_req, res) => res.status(204).end());
   router.get('/me', (req, res) => res.json({ user: req.auth.user }));
   router.patch('/me', async (req, res) => {
     const { name, theme } = req.body ?? {};
@@ -63,8 +65,9 @@ export function createAccountRouter(pool) {
   router.get('/sessions', async (req, res) => {
     const result = await pool.query(
       `SELECT id, device_label AS "deviceLabel", created_at AS "createdAt",
-              last_seen_at AS "lastSeenAt", expires_at AS "expiresAt", id=$2 AS current
-       FROM public.nt_sessions WHERE user_id=$1 AND expires_at>NOW()
+              COALESCE(last_seen_at, created_at) AS "lastSeenAt",
+              LEAST(s.expires_at, ${idleDeadline}) AS "expiresAt", id=$2 AS current
+       FROM public.nt_sessions s WHERE user_id=$1 AND ${activeSession}
        ORDER BY current DESC, last_seen_at DESC NULLS LAST, created_at DESC`,
       [req.auth.user.id, req.auth.sessionId]);
     res.json({ sessions: result.rows });

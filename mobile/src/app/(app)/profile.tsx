@@ -40,7 +40,7 @@ export default function Profile() {
       </Card>
       <Heading>Profissionais vinculados</Heading>{links.loading && <Loading />}<Notice>{links.error}</Notice>
       {!!links.error && <Button title="Tentar novamente" secondary onPress={() => void links.reload()} />}
-      {links.data?.professionals.length === 0 && <Copy>Você ainda não vinculou nenhum profissional. Você também pode criar seus próprios planos.</Copy>}
+      {links.data?.professionals.length === 0 && <Copy>Você ainda não vinculou nenhum profissional. Use o código de um personal ou nutricionista para receber acompanhamento.</Copy>}
       {links.data?.professionals.map(pro => <Card key={pro.id}><Heading>{pro.name}</Heading><Copy>{labels[pro.role]}</Copy>
         <Button title="Remover vínculo" secondary disabled={busy} onPress={() => confirmDisconnect(pro.id)} /></Card>)}
     </>}

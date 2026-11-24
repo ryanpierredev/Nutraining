@@ -2,35 +2,39 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { useSession } from '../lib/session';
 import { useResource } from '../lib/resource';
-import { dateLabel, message, today } from '../lib/api';
+import { canManagePlan, dateLabel, message, today, type PlanKind } from '../lib/api';
 import ClientPicker from './ClientPicker';
+import WorkoutSheet from './WorkoutSheet';
 import { Button, Card, Choice, Copy, Empty, Field, Heading, Loading, Notice, Page, confirmAction, useTheme } from './ui';
-type Kind = 'workout' | 'nutrition';
 type Item = { name: string; sets: string; reps: string; restSeconds: string; time: string; foods: string };
 type Plan = { id: string; userId: string; createdBy: string; isFixed: boolean; title: string; notes: string; authorName: string;
   items: { name: string; sets?: number; reps?: string; restSeconds?: number; time?: string; foods?: string }[] };
 type Result = { plans: Plan[]; logs: { planId: string; itemIndex: number }[] };
 const blankItem = (): Item => ({ name: '', sets: '3', reps: '10 a 12', restSeconds: '60', time: '08:00', foods: '' });
-export default function PlanScreen({ kind }: { kind: Kind }) {
+export default function PlanScreen({ kind }: { kind: PlanKind }) {
   return <Page title={kind === 'workout' ? 'Treino' : 'Dieta'} subtitle={`Rotina de hoje · ${dateLabel(today())}`}>
     <ClientPicker kind={kind}>{subject => <PlanList key={subject.id} kind={kind} target={subject.id} own={subject.own} name={subject.name} />}</ClientPicker>
   </Page>;
 }
-function PlanList({ kind, target, own, name }: { kind: Kind; target: string; own: boolean; name: string }) {
+function PlanList({ kind, target, own, name }: { kind: PlanKind; target: string; own: boolean; name: string }) {
   const { user, call } = useSession();
   const { s } = useTheme();
   const workout = kind === 'workout';
   const admin = user?.role === 'admin';
+  const canManage = canManagePlan(user?.role, kind);
   const fixedLabel = workout ? 'Treino fixo' : 'Dieta fixa';
   const date = today();
-  const resource = useResource<Result>(`app/plans?kind=${kind}&day=${date}&userId=${target}`);
+  const planPath = `app/plans?kind=${kind}&day=${date}&userId=${target}`;
+  const resource = useResource<Result>(planPath);
+  const [showArchived, setShowArchived] = useState(false);
+  const archived = useResource<Result>(workout && showArchived ? `${planPath}&archived=1` : null);
   const [fixed, setFixed] = useState(true);
   const [creating, setCreating] = useState(false); const [title, setTitle] = useState('');
   const [notes, setNotes] = useState(''); const [items, setItems] = useState<Item[]>([blankItem()]);
   const [busy, setBusy] = useState(false); const [notice, setNotice] = useState('');
   function change(index: number, key: keyof Item, value: string) { setItems(previous => previous.map((item, i) => i === index ? { ...item, [key]: value } : item)); }
   async function create() {
-    if (busy || !target) return;
+    if (busy || !canManage) return;
     if (title.trim().length < 2 || items.some(item => item.name.trim().length < 2 || (workout ? !item.reps.trim() : item.foods.trim().length < 2))) {
       setNotice('Preencha o título e os dados de todos os itens.'); return;
     }
@@ -49,8 +53,12 @@ function PlanList({ kind, target, own, name }: { kind: Kind; target: string; own
     catch (failure) { setNotice(message(failure)); } finally { setBusy(false); }
   }
   async function archive(id: string) {
-    if (busy) return; setBusy(true); setNotice('');
-    try { await call(`app/plans/${id}`, { method: 'DELETE' }); await resource.reload(); }
+    if (busy || !canManage) return; setBusy(true); setNotice('');
+    try {
+      await call(`app/plans/${id}`, { method: 'DELETE' });
+      await resource.reload();
+      if (workout && showArchived) await archived.reload();
+    }
     catch (failure) { setNotice(message(failure)); } finally { setBusy(false); }
   }
   async function setPlanFixed(plan: Plan) {
@@ -62,9 +70,21 @@ function PlanList({ kind, target, own, name }: { kind: Kind; target: string; own
     } catch (failure) { setNotice(message(failure)); } finally { setBusy(false); }
   }
   const done = (id: string, index: number) => resource.data?.logs.some(log => log.planId === id && log.itemIndex === index);
+  function controls(plan: Plan) {
+    const logCount = (resource.data?.logs ?? []).filter(log => log.planId === plan.id).length;
+    return <>
+      {!own && <Copy>{logCount} registro(s) do aluno hoje.</Copy>}
+      {admin && <Button title={plan.isFixed ? 'Desafixar plano' : workout ? 'Fixar este treino' : 'Fixar esta dieta'} secondary icon="bookmark" disabled={busy} onPress={() => void setPlanFixed(plan)} />}
+      {canManage && (plan.createdBy === user?.id || admin) && <Button title="Arquivar plano" secondary disabled={busy} onPress={() => confirmAction('Arquivar plano?', plan.title + ' sairá da lista de planos ativos.', 'Arquivar', () => void archive(plan.id))} />}
+    </>;
+  }
+  const newPlanLabel = workout ? '+ Criar treino' : '+ Criar plano alimentar';
+  const emptyDetail = canManage
+    ? own ? 'Crie um plano para começar.' : `Crie o primeiro plano de ${name}.`
+    : `Quando um ${workout ? 'personal' : 'nutricionista'} ou administrador cadastrar um plano para você, ele aparecerá aqui.`;
   return <>
-    <Button title={creating ? 'Fechar formulário' : workout ? '+ Criar treino' : '+ Criar plano alimentar'} secondary disabled={busy} onPress={() => { setCreating(!creating); setNotice(''); }} />
-    {creating && <Card><Heading>{workout ? 'Novo treino' : 'Novo plano alimentar'}</Heading>
+    {canManage && <Button title={creating ? 'Fechar formulário' : newPlanLabel} secondary disabled={busy} onPress={() => { setCreating(!creating); setNotice(''); }} />}
+    {canManage && creating && <Card><Heading>{workout ? 'Novo treino' : 'Novo plano alimentar'}</Heading>
       <Copy>{own ? 'Este plano é para você.' : `Destinatário: ${name}.`}</Copy>
       {admin && <><View style={s.row}>
         <Choice title={fixedLabel} selected={fixed} onPress={() => setFixed(true)} disabled={busy} />
@@ -89,19 +109,28 @@ function PlanList({ kind, target, own, name }: { kind: Kind; target: string; own
     {!creating && <Notice>{notice}</Notice>}
     {resource.loading && <Loading />}<Notice>{resource.error}</Notice>
     {!!resource.error && <Button title="Tentar novamente" secondary onPress={() => void resource.reload()} />}
-    {!resource.loading && resource.data?.plans.length === 0 && <Empty title={workout ? 'Seu próximo treino começa aqui' : 'Vamos organizar as refeições?'} detail={own ? 'Use o botão de criar para montar seu primeiro plano.' : `Crie o primeiro plano de ${name}.`} />}
-    {resource.data?.plans.map(plan => <Card key={plan.id} accent={plan.isFixed}>
-      <View style={s.row}>{plan.isFixed && <View style={s.chip}><Text style={s.chipText}>{fixedLabel.toUpperCase()}</Text></View>}<Text style={s.chipText}>{workout ? `${plan.items.length} EXERCÍCIOS` : `${plan.items.length} REFEIÇÕES`}</Text></View>
+    {!resource.loading && resource.data?.plans.length === 0 && <Empty title={workout ? 'Nenhum treino cadastrado' : 'Nenhum plano alimentar cadastrado'} detail={emptyDetail} />}
+    {workout ? <>
+      {resource.data?.plans.map(plan => <WorkoutSheet key={plan.id} plan={plan} date={date} canLog={own}>
+        {own && <Button title={done(plan.id, -1) ? '✓ Treino concluído hoje · desfazer' : 'Concluir treino de hoje'} secondary={!!done(plan.id, -1)} disabled={busy} onPress={() => void toggle(plan, -1)} />}
+        {controls(plan)}
+      </WorkoutSheet>)}
+      <Button title={showArchived ? 'Ocultar treinos arquivados' : 'Ver treinos arquivados'} secondary onPress={() => setShowArchived(value => !value)} />
+      {showArchived && <>
+        {archived.loading && <Loading />}<Notice>{archived.error}</Notice>
+        {!!archived.error && <Button title="Recarregar treinos arquivados" secondary onPress={() => void archived.reload()} />}
+        {archived.data?.plans.length === 0 && <Copy>Nenhum treino arquivado.</Copy>}
+        {archived.data?.plans.map(plan => <WorkoutSheet key={plan.id} plan={plan} date={date} canLog={false} />)}
+      </>}
+    </> : resource.data?.plans.map(plan => <Card key={plan.id} accent={plan.isFixed}>
+      <View style={s.row}>{plan.isFixed && <View style={s.chip}><Text style={s.chipText}>DIETA FIXA</Text></View>}<Text style={s.chipText}>{plan.items.length} REFEIÇÕES</Text></View>
       <Heading>{plan.title}</Heading><Copy>Por {plan.authorName}</Copy>{!!plan.notes && <Copy>{plan.notes}</Copy>}
       {plan.items.map((item, index) => <View key={index} style={s.divider}>
-        <Text style={s.label}>{workout ? `${index + 1}. ` : `${item.time} · `}{item.name}</Text>
-        <Copy>{workout ? `${item.sets} séries · ${item.reps} · descanso ${item.restSeconds}s` : item.foods}</Copy>
-        {!workout && own && <Button title={done(plan.id, index) ? '✓ Refeição registrada · desfazer' : 'Registrar refeição de hoje'} secondary={!!done(plan.id, index)} disabled={busy} onPress={() => void toggle(plan, index)} />}
+        <Text style={s.label}>{item.time} · {item.name}</Text>
+        <Copy>{item.foods}</Copy>
+        {own && <Button title={done(plan.id, index) ? '✓ Refeição registrada · desfazer' : 'Registrar refeição de hoje'} secondary={!!done(plan.id, index)} disabled={busy} onPress={() => void toggle(plan, index)} />}
       </View>)}
-      {workout && own && <Button title={done(plan.id, -1) ? '✓ Treino concluído hoje · desfazer' : 'Concluir treino de hoje'} secondary={!!done(plan.id, -1)} disabled={busy} onPress={() => void toggle(plan, -1)} />}
-      {!own && <Copy>{(resource.data?.logs ?? []).filter(log => log.planId === plan.id).length} registro(s) do aluno hoje.</Copy>}
-      {admin && <Button title={plan.isFixed ? 'Desafixar plano' : workout ? 'Fixar este treino' : 'Fixar esta dieta'} secondary icon="bookmark" disabled={busy} onPress={() => void setPlanFixed(plan)} />}
-      {(plan.createdBy === user?.id || user?.role === 'admin') && <Button title="Arquivar plano" secondary disabled={busy} onPress={() => confirmAction('Arquivar plano?', plan.title + ' sairá da lista de planos ativos.', 'Arquivar', () => void archive(plan.id))} />}
+      {controls(plan)}
     </Card>)}
   </>;
 }

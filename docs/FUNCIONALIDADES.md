@@ -4,19 +4,20 @@
 
 Depois de entrar, use as abas **Início**, **Treino**, **Dieta**, **Evolução**, **Perfil** e **Ajustes**. No Perfil, você pode editar o nome e escolher uma foto da galeria. Em Ajustes, pode escolher o tema escuro ou claro e ver o dispositivo, o início, a última atividade e a expiração de cada sessão válida. É possível encerrar uma sessão de outro dispositivo ou todas as outras de uma vez.
 
+Cada sessão é encerrada após 15 minutos sem atividade. Ao voltar ao aplicativo depois desse período, entre novamente. A atividade em um dispositivo não prolonga a sessão de outro.
+
 ### Aluno
 
-- Crie treinos informando título, orientações e até 30 exercícios (séries, repetições/duração e descanso).
-- Crie planos alimentares com até 30 refeições, horário e descrição dos alimentos/porções.
+- Consulte os treinos e as dietas cadastrados por personal, nutricionista ou administrador.
+- Em **Treino**, toque no título para abrir a ficha. Registre a carga em kg de cada exercício. Salvar novamente corrige a carga do dia, e **Ver histórico de cargas** mostra os últimos 30 registros do exercício. As cargas continuam disponíveis em **Ver treinos arquivados**.
 - Marque/desmarque treinos e refeições realizados hoje. Repetir a marcação não duplica o registro.
-- Arquive seus planos para tirá-los da lista ativa. Planos criados por um profissional só podem ser arquivados por ele ou por um administrador.
 - Registre água em incrementos de 250 ml; é possível desfazer. O registro é diário, sem meta médica automática.
 - Registre peso, cintura opcional e observações por data. Um novo envio no mesmo dia corrige o registro. A tela mostra até 90 registros e permite filtrar os últimos 30 ou 90 dias. O gráfico alterna entre peso e cintura e mostra a variação no período.
 - Em Perfil, insira o código do personal ou nutricionista para autorizar acompanhamento. Remover o vínculo revoga o acesso futuro desse profissional; os planos recebidos permanecem com o aluno.
 
 ### Personal e nutricionista
 
-Compartilhe o código disponível em Perfil. Depois de o aluno se vincular, ele aparece no seletor de alunos.
+Use **Ajustes → Cadastrar aluno** para criar uma conta. Compartilhe o código disponível em Perfil. Depois de o aluno se vincular, ele aparece no seletor de alunos.
 
 Personal cria/consulta treinos; nutricionista cria/consulta planos alimentares. Ambos podem consultar a evolução de alunos vinculados. Os registros de conclusão pertencem ao aluno; profissionais não podem marcar atividades por ele. Alunos não vinculados são bloqueados na API, mesmo com um ID conhecido.
 
@@ -36,7 +37,7 @@ git pull --ff-only origin main
 bash scripts/update-ec2.sh
 ```
 
-O script aplica a migração 004 e reinicia a API. Gere um novo APK para disponibilizar as telas novas e o seletor de fotos:
+O script aplica as migrações pendentes e reinicia a API. Gere um novo APK para disponibilizar as telas novas e o seletor de fotos:
 
 ```bash
 source scripts/node-runtime.sh
@@ -68,4 +69,4 @@ Em mobile, execute `npm run lint`, `npx tsc --noEmit` e `npx expo export --platf
 
 ## Escopo desta versão
 
-Os planos são preenchidos pelo usuário ou pelo profissional; não há geração automática de dietas, catálogo de alimentos/calorias, vídeos de exercícios, pagamentos, chat ou notificações push. A marcação de atividades usa a data local do aparelho. Peso/cintura não produzem diagnóstico nem metas automáticas. Os dados ficam no servidor, não há sincronização offline; erros de conexão têm opção de tentar novamente.
+Os planos são preenchidos por profissionais e administradores. Não há geração automática de dietas, catálogo de alimentos/calorias, vídeos de exercícios, pagamentos, chat ou notificações push. A marcação de atividades usa a data local do aparelho. Peso/cintura não produzem diagnóstico nem metas automáticas. Os dados ficam no servidor, não há sincronização offline; erros de conexão têm opção de tentar novamente.

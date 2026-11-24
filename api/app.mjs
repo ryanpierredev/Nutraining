@@ -30,6 +30,12 @@ function kind(value) {
   if (!['workout', 'nutrition'].includes(value)) fail('Tipo de plano inválido.');
   return value;
 }
+function requirePlanAuthor(role, type) {
+  if (role === 'admin') return;
+  const specialty = role === 'trainer' ? 'workout' : role === 'nutritionist' ? 'nutrition' : null;
+  if (!specialty) fail('Somente profissionais e administradores podem gerenciar planos.', 403);
+  if (type && type !== specialty) fail('Esse plano pertence a outra especialidade.', 403);
+}
 function planItems(value, type) {
   if (!Array.isArray(value) || value.length < 1 || value.length > 30) fail('Inclua de 1 a 30 itens.');
   return value.map(item => {
@@ -120,11 +126,14 @@ export function createAppRouter(pool) {
   router.get('/plans', async (req, res) => {
     const type = kind(req.query.kind);
     const id = await subject(req, req.query.userId, type);
+    const selectedDay = day(req.query.day);
+    const archived = type === 'workout' && req.query.archived === '1';
     const result = await pool.query(`SELECT p.id, p.user_id AS "userId", p.created_by AS "createdBy",
       p.kind, p.title, p.notes, p.items, p.is_fixed AS "isFixed", u.name AS "authorName", p.created_at AS "createdAt"
       FROM public.nt_plans p JOIN public.nt_users u ON u.id=p.created_by
-      WHERE p.user_id=$1 AND p.kind=$2 AND p.archived_at IS NULL ORDER BY p.is_fixed DESC, p.created_at DESC, p.id DESC`, [id, type]);
-    const selectedDay = day(req.query.day);
+      WHERE p.user_id=$1 AND p.kind=$2 AND (p.archived_at IS NOT NULL)=$3
+      ORDER BY p.is_fixed DESC, p.created_at DESC, p.id DESC`, [id, type, archived]);
+    if (archived) return res.json({ plans: result.rows, logs: [] });
     const logs = await pool.query(`SELECT l.plan_id AS "planId", l.item_index AS "itemIndex" FROM public.nt_plan_logs l
       JOIN public.nt_plans p ON p.id=l.plan_id WHERE l.user_id=$1 AND l.day=$2 AND p.kind=$3 AND p.archived_at IS NULL`, [id, selectedDay, type]);
     res.json({ plans: result.rows, logs: logs.rows });
@@ -132,6 +141,7 @@ export function createAppRouter(pool) {
   router.post('/plans', async (req, res) => {
     const body = req.body || {};
     const type = kind(body.kind);
+    requirePlanAuthor(req.auth.user.role, type);
     const id = await subject(req, body.userId, type);
     const title = text(body.title, 100, true);
     const notes = text(body.notes, 2000);
@@ -159,12 +169,15 @@ export function createAppRouter(pool) {
     res.status(204).end();
   });
   router.delete('/plans/:id', async (req, res) => {
+    const { id: authorId, role } = req.auth.user;
+    requirePlanAuthor(role);
     if (!uuid(req.params.id)) fail('Plano inválido.');
     const found = await pool.query('SELECT * FROM public.nt_plans WHERE id=$1 AND archived_at IS NULL', [req.params.id]);
     const plan = found.rows[0];
     if (!plan) fail('Plano não encontrado.', 404);
+    requirePlanAuthor(role, plan.kind);
     await subject(req, plan.user_id, plan.kind);
-    if (plan.created_by !== req.auth.user.id && req.auth.user.role !== 'admin') fail('Somente o autor pode arquivar este plano.', 403);
+    if (plan.created_by !== authorId && role !== 'admin') fail('Somente o autor pode arquivar este plano.', 403);
     await pool.query('UPDATE public.nt_plans SET archived_at=NOW(), is_fixed=false WHERE id=$1', [plan.id]);
     res.status(204).end();
   });
@@ -185,6 +198,45 @@ export function createAppRouter(pool) {
       await pool.query('DELETE FROM public.nt_plan_logs WHERE plan_id=$1 AND user_id=$2 AND day=$3 AND item_index=$4', [plan.id, req.auth.user.id, selectedDay, index]);
     }
     res.json({ completed });
+  });
+
+  router.get('/plans/:id/exercise-loads', async (req, res) => {
+    if (!uuid(req.params.id)) fail('Treino inválido.');
+    const { rows: [plan] } = await pool.query("SELECT user_id FROM public.nt_plans WHERE id=$1 AND kind='workout'", [req.params.id]);
+    if (!plan) fail('Treino não encontrado.', 404);
+    await subject(req, plan.user_id, 'workout');
+    const result = await pool.query(`
+      SELECT item_index AS "itemIndex", day::text, weight_kg::float AS "weightKg"
+      FROM (
+        SELECT item_index, day, weight_kg, row_number() OVER (PARTITION BY item_index ORDER BY day DESC) AS position
+        FROM public.nt_exercise_loads WHERE plan_id=$1
+      ) recent
+      WHERE position <= 30 ORDER BY item_index, day DESC`, [req.params.id]);
+    res.json({ loads: result.rows });
+  });
+  router.put('/plans/:id/exercise-loads/:index', async (req, res) => {
+    if (!uuid(req.params.id)) fail('Treino inválido.');
+    const index = Number(req.params.index);
+    const selectedDay = logDay(req.body?.day);
+    const weight = req.body?.weightKg;
+    if (!/^\d{1,2}$/.test(req.params.index) || index >= 30) fail('Exercício inválido.');
+    if (typeof weight !== 'number' || !Number.isFinite(weight) || weight < 0 || weight > 1000) {
+      fail('Informe uma carga de 0 a 1.000 kg.');
+    }
+    const { rows: [plan] } = await pool.query(`
+      SELECT jsonb_array_length(items) AS length FROM public.nt_plans
+      WHERE id=$1 AND user_id=$2 AND kind='workout' AND archived_at IS NULL`, [req.params.id, req.auth.user.id]);
+    if (!plan) fail('Treino não encontrado.', 404);
+    if (index >= plan.length) fail('Exercício inválido.');
+    const { rows: [load] } = await pool.query(`
+      INSERT INTO public.nt_exercise_loads (plan_id,item_index,day,weight_kg)
+      SELECT id,$2,$3,$4 FROM public.nt_plans
+      WHERE id=$1 AND archived_at IS NULL FOR SHARE
+      ON CONFLICT (plan_id,item_index,day) DO UPDATE SET weight_kg=EXCLUDED.weight_kg
+      RETURNING item_index AS "itemIndex", day::text, weight_kg::float AS "weightKg"`,
+    [req.params.id, index, selectedDay, weight]);
+    if (!load) fail('Treino não encontrado.', 404);
+    res.json(load);
   });
 
   router.get('/progress', async (req, res) => {

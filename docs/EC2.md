@@ -43,11 +43,11 @@ bash scripts/update-ec2.sh
 
 O serviço padrão é `nutraining-api.service`; para outro serviço existente, passe `API_SERVICE=nome.service`. O script confirma a branch e o checkout limpo, atualiza pelo Git, instala as dependências com lockfile, aplica migrações pendentes, reinicia a unidade e verifica a API e sua conexão ao PostgreSQL. Precisa da permissão de reinício via sudo. O primeiro `git pull` baixa também a versão atual do próprio script.
 
-As migrações têm transação e bloqueio contra execução simultânea. A 001 é ignorada no banco já preparado; a 002 acrescenta `admin`; a 003 cria vínculos, planos, atividades, hidratação e evolução. A 004 adiciona preferências, fotos de perfil, origem do cadastro, identificação de sessões e planos fixos. As migrações preservam usuários existentes. Não remova tabelas nem reaplique SQL manualmente. Se uma migração falhar, o script para antes do reinício. Investigue a falha antes de tentar novamente. Não há reversão automática de schema.
+As migrações têm transação e bloqueio contra execução simultânea. A 001 é ignorada no banco já preparado; a 002 acrescenta `admin`; a 003 cria vínculos, planos, atividades, hidratação e evolução. A 004 adiciona preferências, fotos de perfil, origem do cadastro, identificação de sessões e planos fixos. A 005 registra cadastros feitos por profissionais e pela configuração inicial do servidor. A 006 cria o histórico de cargas por exercício. As migrações preservam usuários existentes. Não remova tabelas nem reaplique SQL manualmente. Se uma migração falhar, o script para antes do reinício. Investigue a falha antes de tentar novamente. Não há reversão automática de schema.
 
 ## Primeiro administrador
 
-Cadastre sua conta pelo aplicativo e, uma única vez, execute no checkout do EC2:
+Se já houver uma conta para o primeiro administrador, promova-a no EC2 usando o e-mail:
 
 ```bash
 cd api
@@ -55,6 +55,18 @@ cd api
 ```
 
 Se optou por Node 24 global, use `node` em vez de `../.runtime/node/bin/node`. O comando promove a conta existente e revoga suas sessões. Faça login novamente para abrir o painel. Ele recusa nova promoção se já existir administrador. Depois, novos administradores são cadastrados pelo painel. Nenhuma senha é recebida pela linha de comando.
+
+Se ainda não existir uma conta para o primeiro administrador, com as migrações aplicadas, execute:
+
+```bash
+cd ~/apps/nutraining-git
+source scripts/node-runtime.sh
+cd api
+read -rsp 'Senha inicial (12 a 128 caracteres): ' nutraining_initial_password && printf '\n' && printf '%s\n' "$nutraining_initial_password" | node --env-file=.env bootstrap-admin.mjs --create email@example.com "Nome do administrador"
+unset nutraining_initial_password
+```
+
+O cadastro público está fechado. Após entrar, o administrador cria novos profissionais e alunos pelo painel. Personal e nutricionista podem criar alunos em **Ajustes → Cadastrar aluno**.
 
 ## Aplicativo
 
