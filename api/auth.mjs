@@ -8,6 +8,7 @@ import { dummyHash, insertUser, matchesPassword, normalizeEmail, roles, validEma
 
 const tokenHash = (token) =>
   createHash('sha256').update(token).digest('hex');
+const professionalRoles = ['trainer', 'nutritionist'];
 
 async function createSession(database, userId, deviceLabel) {
   const label = typeof deviceLabel === 'string'
@@ -122,12 +123,40 @@ export function createAuthRouter(pool, { administrative = false } = {}) {
     return router;
   }
 
-  // Return a clear error to older APKs that still have a public signup screen.
-  router.post('/register', (_req, res) => {
-    res.status(403).json({ error: 'Solicite seu cadastro a um personal, nutricionista ou administrador.' });
+  const signupAttempts = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Muitas tentativas de cadastro. Aguarde 15 minutos.' },
+  });
+  router.post('/register', signupAttempts, async (req, res) => {
+    const { name, password, role, deviceLabel } = req.body ?? {};
+    if (!professionalRoles.includes(role)) {
+      return res.status(403).json({ error: 'O cadastro público é para personal e nutricionista. Contas de aluno devem ser criadas por um profissional ou administrador.' });
+    }
+    const email = normalizeEmail(req.body.email);
+    if (!validName(name) || !validEmail(email) || !validPassword(password)) {
+      return res.status(400).json({ error: 'Informe nome, e-mail e senha de 12 a 128 caracteres.' });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const row = await insertUser(client, { name, email, password, role, source: 'self' });
+      const session = await createSession(client, row.id, deviceLabel);
+      await client.query('COMMIT');
+      res.status(201).json({ user: publicUser(row), ...session });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      if (error.code !== '23505') throw error;
+      res.status(409).json({ error: 'Não foi possível criar uma conta com esse e-mail.' });
+    } finally {
+      client.release();
+    }
   });
   router.post('/students', requireAuth, (req, res, next) => {
-    if (!['trainer', 'nutritionist', 'admin'].includes(req.auth.user.role)) {
+    const { role } = req.auth.user;
+    if (role !== 'admin' && !professionalRoles.includes(role)) {
       return res.status(403).json({ error: 'Seu perfil não pode cadastrar alunos.' });
     }
     next();

@@ -17,6 +17,8 @@ Cada sessão é encerrada após 15 minutos sem atividade. Ao voltar ao aplicativ
 
 ### Personal e nutricionista
 
+Na tela de login, toque em **Cadastrar como profissional** e escolha **Personal** ou **Nutricionista**. Contas de aluno são criadas por profissionais ou administradores logados.
+
 Use **Ajustes → Cadastrar aluno** para criar uma conta. Compartilhe o código disponível em Perfil. Depois de o aluno se vincular, ele aparece no seletor de alunos.
 
 Personal cria/consulta treinos; nutricionista cria/consulta planos alimentares. Ambos podem consultar a evolução de alunos vinculados. Os registros de conclusão pertencem ao aluno; profissionais não podem marcar atividades por ele. Alunos não vinculados são bloqueados na API, mesmo com um ID conhecido.

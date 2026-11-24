@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { AppState, Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as SecureStore from 'expo-secure-store';
-import { ApiError, message, request, type User, type ThemeMode } from './api';
+import { ApiError, message, request, type ProfessionalRole, type User, type ThemeMode } from './api';
 const KEY = 'nutraining.session.v1';
 const IDLE_MS = 15 * 60 * 1000;
 const SYNC_MS = 15 * 1000;
@@ -30,6 +30,7 @@ function deviceLabel() {
 type Session = {
   user: User | null; token: string; loading: boolean; error: string; signedOutNotice: string; trackActivity: () => void;
   reload: () => void; signIn: (email: string, password: string) => Promise<void>;
+  registerProfessional: (input: { name: string; email: string; password: string; role: ProfessionalRole }) => Promise<void>;
   updateProfile: (changes: { name?: string; theme?: ThemeMode }) => Promise<void>;
   signOut: () => Promise<void>; call: (path: string, options?: { method?: string; body?: Record<string, unknown> }) => Promise<any>;
 };
@@ -149,9 +150,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       throw failure;
     }
   }, [endSession, token]);
-  async function signIn(email: string, password: string) {
-    const data = await request('auth/login', {
-      method: 'POST', body: { email, password, deviceLabel: deviceLabel() },
+  async function startSession(path: 'auth/login' | 'auth/register', body: Record<string, unknown>) {
+    const data = await request(path, {
+      method: 'POST', body: { ...body, deviceLabel: deviceLabel() },
     });
     await persist(data.token);
     activate(data.token, data.user);
@@ -168,7 +169,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     endSession(session);
   }
   return <Context.Provider value={{ user, token, loading, error, signedOutNotice, trackActivity,
-    reload: () => { setLoading(true); setError(''); setAttempt(v => v + 1); }, signIn, signOut, updateProfile, call }}>{children}</Context.Provider>;
+    reload: () => { setLoading(true); setError(''); setAttempt(v => v + 1); },
+    signIn: (email, password) => startSession('auth/login', { email, password }),
+    registerProfessional: input => startSession('auth/register', input),
+    signOut, updateProfile, call }}>{children}</Context.Provider>;
 }
 export function useSession() {
   const context = useContext(Context);

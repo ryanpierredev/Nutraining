@@ -19,7 +19,7 @@ function account(role) {
 }
 try {
   assert.equal((await request('admin/users')).status, 401);
-  for (const role of ['student', 'trainer', 'nutritionist', 'admin']) {
+  for (const role of ['student', 'admin', undefined]) {
     const body = account(role);
     assert.equal((await request('auth/register', { body })).status, 403);
     assert.equal((await request('auth/login', { body })).status, 401);

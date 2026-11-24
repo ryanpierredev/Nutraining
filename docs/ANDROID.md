@@ -18,7 +18,7 @@ Caso não esteja autenticado no Expo, use `npx eas-cli@latest login` no terminal
 
 O perfil preview gera um APK interno, com `EXPO_PUBLIC_API_URL=https://3.142.79.208:9443` incorporado no bundle. Essa URL é pública e não é um segredo. Não desative a validação HTTPS. O aplicativo exige um certificado válido. Confira se não há variável conflitante para a mesma chave nas configurações do projeto Expo.
 
-Ao terminar, abra o link de instalação fornecido pelo EAS no celular e instale a atualização. Esta versão se identifica como 1.3.0 (versionCode 5). O pacote continua `com.ryanpierredev.nutrainingmobile`. Aplique as migrações pendentes à API antes de usar as telas novas. A geração na nuvem exige conectividade com Expo e pode consumir a cota de builds da conta.
+Ao terminar, abra o link de instalação fornecido pelo EAS no celular e instale a atualização. Esta versão se identifica como 1.3.1 (versionCode 6). O pacote continua `com.ryanpierredev.nutrainingmobile`. Aplique as migrações pendentes à API antes de usar as telas novas. A geração na nuvem exige conectividade com Expo e pode consumir a cota de builds da conta.
 
 Antes de builds futuros, incremente version/versionCode no Git conforme necessário. Se o Android recusar a atualização, registre o erro e confira assinatura/versionCode; não desinstale automaticamente, pois isso remove os dados locais.
 

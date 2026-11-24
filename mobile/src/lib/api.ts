@@ -1,4 +1,5 @@
 export type Role = 'student' | 'trainer' | 'nutritionist' | 'admin';
+export type ProfessionalRole = Extract<Role, 'trainer' | 'nutritionist'>;
 export type PlanKind = 'workout' | 'nutrition';
 export function canManagePlan(role: Role | undefined, kind: PlanKind) {
   return role === 'admin' || role === (kind === 'workout' ? 'trainer' : 'nutritionist');

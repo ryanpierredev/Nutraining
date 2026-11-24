@@ -66,7 +66,7 @@ read -rsp 'Senha inicial (12 a 128 caracteres): ' nutraining_initial_password &&
 unset nutraining_initial_password
 ```
 
-O cadastro público está fechado. Após entrar, o administrador cria novos profissionais e alunos pelo painel. Personal e nutricionista podem criar alunos em **Ajustes → Cadastrar aluno**.
+O cadastro público está disponível para personal e nutricionista na tela de login. O administrador também cria profissionais e alunos pelo painel. Personal e nutricionista podem criar alunos em **Ajustes → Cadastrar aluno**.
 
 ## Aplicativo
 

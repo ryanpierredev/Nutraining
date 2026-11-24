@@ -48,17 +48,24 @@ try {
     const password = randomBytes(24).toString('base64url');
     emails.push(email);
 
-    const user = await insertUser(database, { name: testName, email, password, role, source: 'self' });
-    const firstLogin = await request('/login', {
+    if (role === 'student') await insertUser(database, { name: testName, email, password, role, source: 'self' });
+    const firstLogin = await request(role === 'student' ? '/login' : '/register', {
       method: 'POST',
-      body: { email, password, deviceLabel: 'Telefone de teste' },
+      body: { name: testName, email, password, role, deviceLabel: 'Telefone de teste' },
     });
-    assert.equal(firstLogin.status, 200);
+    assert.equal(firstLogin.status, role === 'student' ? 200 : 201);
+    assert.equal(firstLogin.data.user.role, role);
+    if (role !== 'student') {
+      assert.match(firstLogin.data.user.professionalCode, /^[0-9a-f]{24}$/);
+      assert.equal((await request('/register', { method: 'POST', body: { name: testName, email, password, role } })).status, 409);
+    }
 
     const stored = await database.query(
-      'SELECT password_hash FROM public.nt_users WHERE email = $1',
+      'SELECT password_hash, registration_source, registered_by FROM public.nt_users WHERE email = $1',
       [email],
     );
+    assert.equal(stored.rows[0].registration_source, 'self');
+    assert.equal(stored.rows[0].registered_by, null);
 
     assert.ok(
       stored.rows[0]?.password_hash?.startsWith('scrypt-v1$') &&
@@ -87,7 +94,7 @@ try {
     assert.equal(profile.status, 200);
     assert.equal(profile.data.user.email, email);
     assert.equal(profile.data.user.role, role);
-    assert.equal(profile.data.user.id, user.id);
+    assert.equal(profile.data.user.id, firstLogin.data.user.id);
 
     const auth = { token: login.data.token };
     if (role === 'student') {
